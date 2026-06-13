@@ -1,0 +1,1 @@
+{"id":"int-fe060b1974e6b51dd8ab6966d0fa521f","kind":"field_change","created_at":"2026-06-13T12:13:31.495737Z","actor":"Albert Cornelissen","issue_id":"pdfv-m0-1","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Scaffold complete and builds end-to-end (TS typecheck, vite build, cargo build). Named SignetPDF/org.signetpdf throughout."}}
