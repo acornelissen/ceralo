@@ -28,6 +28,22 @@ h1 {
   margin: 0 0 0.25rem;
 }
 
+.viewer {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.viewer .page {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  background: #fff;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
