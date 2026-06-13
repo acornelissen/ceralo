@@ -1,0 +1,13 @@
+dist
+node_modules
+src-tauri
+package-lock.json
+
+# Tool-managed / generated files
+.beads
+.agents
+.codex
+.claude
+.vscode
+AGENTS.md
+CLAUDE.md

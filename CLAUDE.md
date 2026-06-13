@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-SignetPDF is a minimal, free, cross-platform PDF viewer for filling forms, editing text and signing. As of this writing the repository is **not yet scaffolded** — the only artifact is the work plan, tracked in beads (see Task tracking below). The architecture below is the planned target; build it as the plan describes rather than inventing a different structure.
+SignetPDF is a minimal, free, cross-platform PDF viewer for filling forms, editing text and signing. The walking skeleton (M0) is under way: the Tauri 2 + Vite + TypeScript app builds and runs, but feature work (PDF rendering, forms, annotations, signing) is still ahead. The work plan is tracked in beads (see Task tracking below). The architecture below is the planned target; build it as the plan describes rather than inventing a different structure.
 
 ## Task tracking (read before starting work)
 
