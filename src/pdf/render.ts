@@ -21,3 +21,22 @@ export async function renderPageToCanvas(
   canvas.height = Math.floor(viewport.height);
   await page.render({ canvas, canvasContext, viewport }).promise;
 }
+
+/**
+ * Render every page of a document, stacked top to bottom, into `mount`. Existing
+ * content is cleared first. Pages render in order; large-document virtualisation
+ * (only drawing near-viewport pages) is deferred to m5-9.
+ */
+export async function renderAllPages(
+  doc: PDFDocumentProxy,
+  mount: HTMLElement,
+  scale = 1.25,
+): Promise<void> {
+  mount.replaceChildren();
+  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
+    const canvas = document.createElement("canvas");
+    canvas.className = "page";
+    mount.appendChild(canvas);
+    await renderPageToCanvas(doc, pageNumber, canvas, scale);
+  }
+}
