@@ -12,7 +12,15 @@
     <main class="app" id="app">
       <header class="toolbar">
         <h1>SignetPDF</h1>
-        <button id="open" type="button">Open PDF…</button>
+        <div class="toolbar-actions">
+          <button id="open" type="button">Open PDF…</button>
+          <div class="zoom" role="group" aria-label="Zoom">
+            <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+            <span id="zoom-level" aria-live="polite">125%</span>
+            <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+            <button id="zoom-fit" type="button">Fit width</button>
+          </div>
+        </div>
       </header>
       <div id="viewer" class="viewer">Loading…</div>
     </main>

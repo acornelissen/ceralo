@@ -34,6 +34,20 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.toolbar-actions,
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.zoom #zoom-level {
+  min-width: 3.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .toolbar button {
@@ -47,6 +61,11 @@ h1 {
 
 .toolbar button:hover {
   border-color: #396cd8;
+}
+
+.toolbar button:focus-visible {
+  outline: 2px solid #396cd8;
+  outline-offset: 2px;
 }
 
 .viewer {
