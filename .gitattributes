@@ -1,0 +1,9 @@
+# Normalize line endings: LF in the repository and on checkout on every OS, so
+# Prettier's --check passes identically on Windows CI.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending normalized.
+*.png binary
+*.ico binary
+*.icns binary
+*.pdf binary
