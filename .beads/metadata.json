@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "SignetPDF",
+  "project_id": "ca54ea92-8422-4bf8-8bf5-82481acef00f"
+}
