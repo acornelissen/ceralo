@@ -11,5 +11,7 @@ import { getDocument, type PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.
  * because pdf.js may transfer (detach) the ArrayBuffer it is handed.
  */
 export function loadPdfDocument(bytes: Uint8Array): Promise<PDFDocumentProxy> {
+  // pdf.js v6 does not use eval/Function, so it runs cleanly under the hardened
+  // CSP (no 'unsafe-eval').
   return getDocument({ data: bytes.slice() }).promise;
 }

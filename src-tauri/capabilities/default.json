@@ -1,9 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Main window: core defaults only. No plugin commands (dialog, fs, shell, http) are exposed to the frontend; the open dialog runs Rust-side inside the open_pdf command, so the JS surface is just the app's own commands.",
   "windows": ["main"],
-  "permissions": [
-    "core:default"
-  ]
+  "permissions": ["core:default"]
 }

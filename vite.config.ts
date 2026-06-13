@@ -9,6 +9,11 @@ export default defineConfig(async () => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
+  // Emit every asset as a file (never an inline data: URI) so the hardened CSP
+  // can keep connect-src to 'self' for the bundled worker and fixtures.
+  build: {
+    assetsInlineLimit: 0,
+  },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: 1420,
