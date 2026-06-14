@@ -8,6 +8,7 @@ import fixtureUrl from "../fixtures/two-page.pdf?url";
 import { invoke } from "@tauri-apps/api/core";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { createModel, markSaved, withPages, type DocumentModel } from "./model/document";
+import { hasXfa } from "./forms/xfa";
 import { loadPdfDocument } from "./pdf/document";
 import { capturePageGeometry } from "./pdf/geometry";
 import { renderAllPages } from "./pdf/render";
@@ -80,7 +81,12 @@ async function openUserPdf(viewer: Viewer): Promise<void> {
   if (!opened) {
     return; // user cancelled the dialog
   }
-  await setDocument(viewer, new Uint8Array(opened.bytes), opened.path);
+  const bytes = new Uint8Array(opened.bytes);
+  if (await hasXfa(bytes)) {
+    setStatus(viewer, "This PDF uses an XFA form, which SignetPDF can't edit. It was not opened.");
+    return;
+  }
+  await setDocument(viewer, bytes, opened.path);
 }
 
 async function save(viewer: Viewer): Promise<void> {
