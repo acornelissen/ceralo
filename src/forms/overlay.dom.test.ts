@@ -50,4 +50,51 @@ describe("buildFieldControl (DOM)", () => {
     expect(checkbox.style.left).toMatch(/px$/);
     expect(checkbox.style.width).toMatch(/px$/);
   });
+
+  it("builds a dropdown with options in order and captures selection", () => {
+    const element = buildFieldControl(
+      {
+        name: "choice.city",
+        kind: "dropdown",
+        page: 0,
+        rect,
+        options: ["London", "Paris", "Tokyo"],
+      },
+      page,
+      viewport,
+    );
+    if (!(element instanceof HTMLSelectElement)) {
+      throw new Error("expected a select");
+    }
+    expect([...element.options].map((option) => option.value)).toEqual([
+      "London",
+      "Paris",
+      "Tokyo",
+    ]);
+    element.value = "Paris";
+    expect(element.value).toBe("Paris");
+  });
+
+  it("builds an option list as a multi-row select", () => {
+    const element = buildFieldControl(
+      {
+        name: "choice.fruit",
+        kind: "optionlist",
+        page: 0,
+        rect,
+        options: ["Apple", "Pear", "Plum"],
+      },
+      page,
+      viewport,
+    );
+    if (!(element instanceof HTMLSelectElement)) {
+      throw new Error("expected a select");
+    }
+    expect(element.size).toBeGreaterThan(1);
+    expect([...element.options].map((option) => option.textContent)).toEqual([
+      "Apple",
+      "Pear",
+      "Plum",
+    ]);
+  });
 });

@@ -122,6 +122,11 @@ h1 {
   cursor: pointer;
 }
 
+.overlay .field-choice {
+  border: 1px solid #396cd8;
+  background: rgba(57, 108, 216, 0.06);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;

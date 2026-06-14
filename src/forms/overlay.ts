@@ -63,7 +63,16 @@ export function buildFieldControl(
   return control;
 }
 
-function createControl(field: FormField): HTMLInputElement | null {
+function populateOptions(select: HTMLSelectElement, options: readonly string[]): void {
+  for (const value of options) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.appendChild(option);
+  }
+}
+
+function createControl(field: FormField): HTMLElement | null {
   switch (field.kind) {
     case "text": {
       const input = document.createElement("input");
@@ -94,8 +103,23 @@ function createControl(field: FormField): HTMLInputElement | null {
       input.setAttribute("aria-label", `${field.name}: ${field.onValue ?? ""}`);
       return input;
     }
+    case "dropdown": {
+      const select = document.createElement("select");
+      select.classList.add("field-choice");
+      select.setAttribute("aria-label", field.name);
+      populateOptions(select, field.options ?? []);
+      return select;
+    }
+    case "optionlist": {
+      const select = document.createElement("select");
+      select.classList.add("field-choice", "field-list");
+      // Render as a multi-row list box rather than a collapsed dropdown.
+      select.size = Math.min(Math.max(field.options?.length ?? 2, 2), 6);
+      select.setAttribute("aria-label", field.name);
+      populateOptions(select, field.options ?? []);
+      return select;
+    }
     default:
-      // dropdown / optionlist arrive in m2-4.
       return null;
   }
 }
