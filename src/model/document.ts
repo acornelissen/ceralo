@@ -76,6 +76,11 @@ export function createModel(sourceBytes: Uint8Array): DocumentModel {
   });
 }
 
+/** Mark the model saved (dirty=false) after a successful write; returns a new model. */
+export function markSaved(model: DocumentModel): DocumentModel {
+  return freezeModel({ ...model, dirty: false });
+}
+
 /**
  * Populate page geometry on load. This is not a user edit, so the dirty flag is
  * left unchanged; the input model is not touched.

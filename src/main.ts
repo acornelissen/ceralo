@@ -1,14 +1,17 @@
 // SignetPDF frontend entry point.
-// Configures the pdf.js worker, renders a bundled fixture on startup so the
-// window is never empty, and lets the user open any PDF (via the Rust open_pdf
-// command), scroll all of its pages, and zoom. Failures are reported in a status
-// line and never discard the currently rendered document.
+// Configures the pdf.js worker, renders a bundled fixture on startup, and lets
+// the user open a PDF (Rust open_pdf), scroll/zoom it, and save it back (Rust
+// save_pdf / save_pdf_as). The DocumentModel is the source of truth for saving
+// and the dirty flag; failures surface in a status line.
 import "./pdf/worker";
 import fixtureUrl from "../fixtures/two-page.pdf?url";
 import { invoke } from "@tauri-apps/api/core";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { createModel, markSaved, withPages, type DocumentModel } from "./model/document";
 import { loadPdfDocument } from "./pdf/document";
+import { capturePageGeometry } from "./pdf/geometry";
 import { renderAllPages } from "./pdf/render";
+import { saveModel } from "./save/save";
 import { clampScale, fitToWidthScale, ZOOM_STEP } from "./pdf/zoom";
 
 interface OpenedPdf {
@@ -21,6 +24,8 @@ interface Viewer {
   status: HTMLElement | null;
   zoomLabel: HTMLElement | null;
   doc: PDFDocumentProxy | null;
+  model: DocumentModel | null;
+  path: string | null;
   scale: number;
 }
 
@@ -39,11 +44,12 @@ async function rerender(viewer: Viewer): Promise<void> {
   }
 }
 
-async function setDocument(viewer: Viewer, bytes: Uint8Array): Promise<void> {
-  // Parse first; only swap in the new document once it has loaded, so a corrupt
-  // or non-PDF file leaves the currently rendered pages untouched.
+async function setDocument(viewer: Viewer, bytes: Uint8Array, path: string | null): Promise<void> {
   const doc = await loadPdfDocument(bytes);
+  const pages = await capturePageGeometry(doc);
   viewer.doc = doc;
+  viewer.model = withPages(createModel(bytes), pages);
+  viewer.path = path;
   await rerender(viewer);
 }
 
@@ -61,17 +67,53 @@ async function fitWidth(viewer: Viewer): Promise<void> {
   await setScale(viewer, fitToWidthScale(width, viewer.mount.clientWidth));
 }
 
+/** Returns false if there are unsaved changes the user chose to keep. */
+function mayDiscard(viewer: Viewer): boolean {
+  return !viewer.model?.dirty || window.confirm("Discard unsaved changes?");
+}
+
 async function openUserPdf(viewer: Viewer): Promise<void> {
+  if (!mayDiscard(viewer)) {
+    return;
+  }
   const opened = await invoke<OpenedPdf | null>("open_pdf");
   if (!opened) {
     return; // user cancelled the dialog
   }
-  await setDocument(viewer, new Uint8Array(opened.bytes));
+  await setDocument(viewer, new Uint8Array(opened.bytes), opened.path);
+}
+
+async function save(viewer: Viewer): Promise<void> {
+  if (!viewer.model) {
+    return;
+  }
+  if (!viewer.path) {
+    await saveAs(viewer);
+    return;
+  }
+  const bytes = await saveModel(viewer.model);
+  await invoke("save_pdf", { path: viewer.path, bytes: Array.from(bytes) });
+  viewer.model = markSaved(viewer.model);
+  setStatus(viewer, "Saved.");
+}
+
+async function saveAs(viewer: Viewer): Promise<void> {
+  if (!viewer.model) {
+    return;
+  }
+  const bytes = await saveModel(viewer.model);
+  const path = await invoke<string | null>("save_pdf_as", { bytes: Array.from(bytes) });
+  if (!path) {
+    return; // user cancelled the dialog
+  }
+  viewer.path = path;
+  viewer.model = markSaved(viewer.model);
+  setStatus(viewer, "Saved.");
 }
 
 async function showBundledFixture(viewer: Viewer): Promise<void> {
   const bytes = new Uint8Array(await (await fetch(fixtureUrl)).arrayBuffer());
-  await setDocument(viewer, bytes);
+  await setDocument(viewer, bytes, null);
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -85,6 +127,8 @@ window.addEventListener("DOMContentLoaded", () => {
     status: document.querySelector<HTMLElement>("#status"),
     zoomLabel: document.querySelector<HTMLElement>("#zoom-level"),
     doc: null,
+    model: null,
+    path: null,
     scale: 1.25,
   };
 
@@ -95,22 +139,26 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  document
-    .querySelector<HTMLButtonElement>("#open")
-    ?.addEventListener("click", () => run(() => openUserPdf(viewer), "open that PDF"));
-  document
-    .querySelector<HTMLButtonElement>("#zoom-in")
-    ?.addEventListener("click", () =>
-      run(() => setScale(viewer, viewer.scale * ZOOM_STEP), "zoom"),
-    );
-  document
-    .querySelector<HTMLButtonElement>("#zoom-out")
-    ?.addEventListener("click", () =>
-      run(() => setScale(viewer, viewer.scale / ZOOM_STEP), "zoom"),
-    );
-  document
-    .querySelector<HTMLButtonElement>("#zoom-fit")
-    ?.addEventListener("click", () => run(() => fitWidth(viewer), "fit to width"));
+  const on = (id: string, action: () => Promise<void>, what: string): void => {
+    document
+      .querySelector<HTMLButtonElement>(id)
+      ?.addEventListener("click", () => run(action, what));
+  };
+
+  on("#open", () => openUserPdf(viewer), "open that PDF");
+  on("#save", () => save(viewer), "save the PDF");
+  on("#save-as", () => saveAs(viewer), "save the PDF");
+  on("#zoom-in", () => setScale(viewer, viewer.scale * ZOOM_STEP), "zoom");
+  on("#zoom-out", () => setScale(viewer, viewer.scale / ZOOM_STEP), "zoom");
+  on("#zoom-fit", () => fitWidth(viewer), "fit to width");
+
+  // Warn before leaving with unsaved changes.
+  window.addEventListener("beforeunload", (event) => {
+    if (viewer.model?.dirty) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
 
   run(() => showBundledFixture(viewer), "render the bundled PDF");
 });

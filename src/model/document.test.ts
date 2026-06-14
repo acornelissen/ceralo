@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addAnnotation,
   createModel,
+  markSaved,
   removeAnnotation,
   setFieldValue,
   updateAnnotation,
@@ -60,6 +61,18 @@ describe("setFieldValue", () => {
     expect(original.fieldValues).toEqual([]);
     expect(original.dirty).toBe(false);
     expect(updated).not.toBe(original);
+  });
+});
+
+describe("markSaved", () => {
+  const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+
+  it("clears the dirty flag without touching the input", () => {
+    const edited = setFieldValue(createModel(bytes), "name", "Ada");
+    expect(edited.dirty).toBe(true);
+    const saved = markSaved(edited);
+    expect(saved.dirty).toBe(false);
+    expect(edited.dirty).toBe(true);
   });
 });
 
