@@ -3,9 +3,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { loadPdfDocument } from "../pdf/document";
 import { capturePageGeometry } from "../pdf/geometry";
-import { modelToScreen, type Viewport } from "./coords";
+import { modelToScreen, screenToModel, type Viewport } from "./coords";
 import type { PageGeometry } from "./document";
-import { userSpacePoint } from "./geometry";
+import { screenPoint, userSpacePoint } from "./geometry";
 
 function page(rotation: number): PageGeometry {
   return { index: 0, width: 612, height: 792, rotation };
@@ -43,6 +43,36 @@ function fixture(name: string): Uint8Array {
     readFileSync(fileURLToPath(new URL(`../../fixtures/${name}`, import.meta.url))),
   );
 }
+
+describe("screenToModel", () => {
+  it("inverts a known modelToScreen mapping", () => {
+    const back = screenToModel(screenPoint(200, 1184), page(0), viewport);
+    expect(back.x).toBeCloseTo(100, 6);
+    expect(back.y).toBeCloseTo(200, 6);
+  });
+
+  it("round-trips screenToModel(modelToScreen(p)) ~= p across rotations and scales", () => {
+    const rotations = [0, 90, 180, 270];
+    const scales = [0.5, 1, 1.5, 2, 3.7];
+    const xs = [0, 50, 306, 612];
+    const ys = [0, 123, 400, 792];
+
+    for (const rotation of rotations) {
+      for (const scale of scales) {
+        const geometry = page(rotation);
+        const vp: Viewport = { scale };
+        for (const x of xs) {
+          for (const y of ys) {
+            const start = userSpacePoint(x, y);
+            const back = screenToModel(modelToScreen(start, geometry, vp), geometry, vp);
+            expect(back.x).toBeCloseTo(x, 6);
+            expect(back.y).toBeCloseTo(y, 6);
+          }
+        }
+      }
+    }
+  });
+});
 
 describe("modelToScreen matches pdf.js convertToViewportPoint", () => {
   it.each(["two-page.pdf", "rotated-90.pdf"])(

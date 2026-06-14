@@ -1,5 +1,5 @@
 import type { PageGeometry } from "./document";
-import { screenPoint, type ScreenPoint, type UserSpacePoint } from "./geometry";
+import { screenPoint, userSpacePoint, type ScreenPoint, type UserSpacePoint } from "./geometry";
 
 // THE coordinate seam: the one place that converts between PDF user space
 // (points, bottom-left origin, unrotated) and screen space (CSS pixels,
@@ -79,4 +79,17 @@ export function modelToScreen(
 ): ScreenPoint {
   const [a, b, c, d, e, f] = viewportMatrix(page, viewport);
   return screenPoint(a * point.x + c * point.y + e, b * point.x + d * point.y + f);
+}
+
+/** Convert a screen-space point back to user space: the exact inverse of modelToScreen. */
+export function screenToModel(
+  point: ScreenPoint,
+  page: PageGeometry,
+  viewport: Viewport,
+): UserSpacePoint {
+  const [a, b, c, d, e, f] = viewportMatrix(page, viewport);
+  const determinant = a * d - c * b;
+  const dx = point.x - e;
+  const dy = point.y - f;
+  return userSpacePoint((d * dx - c * dy) / determinant, (-b * dx + a * dy) / determinant);
 }
