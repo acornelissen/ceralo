@@ -1,4 +1,5 @@
 import { AnnotationMode, type PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
+import type { DisplaySize } from "./layout";
 
 /**
  * Render one page of a pdf.js document onto a canvas at the given scale. This
@@ -30,28 +31,32 @@ export async function renderPageToCanvas(
   }).promise;
 }
 
-/** A rendered page and the overlay layer stacked over its canvas. */
+/**
+ * A page placeholder: a sized container holding the (initially blank) canvas and
+ * the overlay layer the caller fills with form/annotation controls. The canvas
+ * is rendered on demand when the page nears the viewport and cleared when it
+ * leaves, so a large document stays bounded in memory (m5-9).
+ */
 export interface RenderedPage {
   readonly index: number; // 0-based
+  readonly container: HTMLElement;
+  readonly canvas: HTMLCanvasElement;
   readonly overlay: HTMLElement;
 }
 
 /**
- * Render every page of a document, stacked top to bottom, into `mount`. Each page
- * is a positioned container holding the canvas and an empty overlay layer the
- * caller fills with form/annotation controls (placed via the coordinate seam).
- * Existing content is cleared first; large-document virtualisation is m5-9.
+ * Lay out one sized, empty placeholder per page, stacked top to bottom, into
+ * `mount`. Sizing every placeholder up front keeps the scroll height and the
+ * coordinate seam correct whether or not a page is currently drawn. Existing
+ * content is cleared first. Canvases are rendered later by renderPageToCanvas.
  */
-export async function renderAllPages(
-  doc: PDFDocumentProxy,
-  mount: HTMLElement,
-  scale = 1.25,
-): Promise<RenderedPage[]> {
+export function createPagePlaceholders(mount: HTMLElement, sizes: DisplaySize[]): RenderedPage[] {
   mount.replaceChildren();
-  const pages: RenderedPage[] = [];
-  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
+  return sizes.map((size, index) => {
     const container = document.createElement("div");
     container.className = "page-container";
+    container.style.width = `${size.width}px`;
+    container.style.height = `${size.height}px`;
 
     const canvas = document.createElement("canvas");
     canvas.className = "page";
@@ -62,8 +67,12 @@ export async function renderAllPages(
     container.appendChild(overlay);
 
     mount.appendChild(container);
-    await renderPageToCanvas(doc, pageNumber, canvas, scale);
-    pages.push({ index: pageNumber - 1, overlay });
-  }
-  return pages;
+    return { index, container, canvas, overlay };
+  });
+}
+
+/** Release a page's canvas memory when it scrolls out of view. */
+export function clearPageCanvas(canvas: HTMLCanvasElement): void {
+  canvas.width = 0;
+  canvas.height = 0;
 }

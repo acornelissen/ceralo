@@ -51,7 +51,13 @@ import { hasXfa } from "./forms/xfa";
 import { openPdfDocument } from "./pdf/document";
 import { openWithPassword } from "./app/password";
 import { capturePageGeometry } from "./pdf/geometry";
-import { renderAllPages, type RenderedPage } from "./pdf/render";
+import { pageDisplaySize } from "./pdf/layout";
+import {
+  clearPageCanvas,
+  createPagePlaceholders,
+  renderPageToCanvas,
+  type RenderedPage,
+} from "./pdf/render";
 import { isEncryptedPdf, saveModel, type SaveOptions } from "./save/save";
 import { clampScale, fitToWidthScale, ZOOM_STEP } from "./pdf/zoom";
 
@@ -88,6 +94,8 @@ interface Viewer {
   history: History | null;
   // True when the open document is encrypted; saving is disabled for it.
   encrypted: boolean;
+  // Observes page placeholders to render/free pages as they near the viewport.
+  observer: IntersectionObserver | null;
 }
 
 /** Apply a model edit and record it for undo. The model is the present snapshot. */
@@ -222,6 +230,43 @@ function armCreateTools(viewer: Viewer, page: RenderedPage, geometry: PageGeomet
   });
 }
 
+// Render a page's canvas and place its controls when it nears the viewport. The
+// set tracks which pages are currently live so mount/unmount stay idempotent and
+// a page unmounted mid-render (a fast scroll) is left clean.
+async function mountPage(
+  viewer: Viewer,
+  page: RenderedPage,
+  geometry: PageGeometry,
+  live: Set<number>,
+): Promise<void> {
+  if (live.has(page.index) || !viewer.doc) {
+    return;
+  }
+  live.add(page.index);
+  try {
+    await renderPageToCanvas(viewer.doc, page.index + 1, page.canvas, viewer.scale);
+  } catch {
+    live.delete(page.index);
+    return;
+  }
+  if (!live.has(page.index)) {
+    clearPageCanvas(page.canvas); // unmounted while rendering
+    return;
+  }
+  placeFormControls(viewer, page, geometry);
+  placeTextBoxes(viewer, page, geometry);
+  placeStamps(viewer, page, geometry);
+}
+
+/** Free a page that scrolled away: drop its canvas and overlay controls. */
+function unmountPage(page: RenderedPage, live: Set<number>): void {
+  if (!live.delete(page.index)) {
+    return;
+  }
+  clearPageCanvas(page.canvas);
+  page.overlay.replaceChildren();
+}
+
 async function rerender(viewer: Viewer): Promise<void> {
   if (viewer.zoomLabel) {
     viewer.zoomLabel.textContent = `${Math.round(viewer.scale * 100)}%`;
@@ -229,17 +274,44 @@ async function rerender(viewer: Viewer): Promise<void> {
   if (!viewer.doc || !viewer.model) {
     return;
   }
-  const rendered = await renderAllPages(viewer.doc, viewer.mount, viewer.scale);
-  for (const page of rendered) {
-    const geometry = viewer.model.pages[page.index];
-    if (!geometry) {
-      continue;
+  viewer.observer?.disconnect();
+
+  const model = viewer.model;
+  const sizes = model.pages.map((page) => pageDisplaySize(page, viewer.scale));
+  const placeholders = createPagePlaceholders(viewer.mount, sizes);
+  const byContainer = new Map(placeholders.map((page) => [page.container, page]));
+  const live = new Set<number>();
+
+  // The create-tools listener lives on the overlay, which persists across
+  // mount/unmount, so it is armed once per placeholder rather than per mount.
+  for (const page of placeholders) {
+    const geometry = model.pages[page.index];
+    if (geometry) {
+      armCreateTools(viewer, page, geometry);
     }
-    placeFormControls(viewer, page, geometry);
-    placeTextBoxes(viewer, page, geometry);
-    placeStamps(viewer, page, geometry);
-    armCreateTools(viewer, page, geometry);
   }
+
+  // Render pages within ~one screen of the viewport; free them when far away.
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const page = byContainer.get(entry.target as HTMLElement);
+        const geometry = page && model.pages[page.index];
+        if (!page || !geometry) {
+          continue;
+        }
+        if (entry.isIntersecting) {
+          void mountPage(viewer, page, geometry, live);
+        } else {
+          unmountPage(page, live);
+        }
+      }
+    },
+    { root: null, rootMargin: "300px 0px" },
+  );
+  placeholders.forEach((page) => observer.observe(page.container));
+  viewer.observer = observer;
+
   updateHistoryButtons(viewer);
 }
 
@@ -544,6 +616,7 @@ window.addEventListener("DOMContentLoaded", () => {
     focusAnnotationId: null,
     history: null,
     encrypted: false,
+    observer: null,
   };
 
   const run = (action: () => Promise<void>, what: string): void => {

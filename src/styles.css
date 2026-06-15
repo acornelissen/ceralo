@@ -91,16 +91,18 @@ h1 {
   gap: 1rem;
 }
 
+/* The container is sized to the page up front (virtualized rendering), so it
+   shows as a blank page until its canvas is drawn on scroll-in. */
 .page-container {
   position: relative;
   line-height: 0;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .page-container .page {
   display: block;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  background: #fff;
 }
 
 .overlay {
