@@ -1,9 +1,36 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createModel } from "../model/document";
+import { createModel, setFieldValue } from "../model/document";
 import { loadPdfDocument } from "../pdf/document";
 import { saveModel } from "./save";
+
+interface PdfWidget {
+  subtype?: string;
+  fieldName?: string;
+  fieldValue?: string | string[] | null;
+}
+
+/** Read each field's persisted value from the saved bytes via pdf.js. */
+async function fieldValues(bytes: Uint8Array): Promise<Record<string, string | null>> {
+  const doc = await loadPdfDocument(bytes);
+  const result: Record<string, string | null> = {};
+  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+    const widgets = (await (
+      await doc.getPage(pageNumber)
+    ).getAnnotations()) as unknown as PdfWidget[];
+    for (const widget of widgets) {
+      if (widget.subtype !== "Widget" || !widget.fieldName || widget.fieldName in result) {
+        continue;
+      }
+      const value = Array.isArray(widget.fieldValue)
+        ? (widget.fieldValue[0] ?? null)
+        : widget.fieldValue;
+      result[widget.fieldName] = value ?? null;
+    }
+  }
+  return result;
+}
 
 function fixture(name: string): Uint8Array {
   return new Uint8Array(
@@ -31,6 +58,23 @@ describe("saveModel empty round-trip", () => {
 
     expect(await pageCount(saved)).toBe(await pageCount(original));
     expect(await fieldNames(saved)).toEqual(await fieldNames(original));
+  });
+
+  it("writes every field type and they persist on re-open", async () => {
+    let model = createModel(fixture("acroform.pdf"));
+    model = setFieldValue(model, "text.fullName", "Ada Lovelace");
+    model = setFieldValue(model, "check.agree", true);
+    model = setFieldValue(model, "radio.color", "1");
+    model = setFieldValue(model, "choice.city", "Paris");
+    model = setFieldValue(model, "choice.fruit", "Pear");
+
+    const values = await fieldValues(await saveModel(model));
+
+    expect(values["text.fullName"]).toBe("Ada Lovelace");
+    expect(values["check.agree"]).toBe("Yes");
+    expect(values["radio.color"]).toBe("1");
+    expect(values["choice.city"]).toBe("Paris");
+    expect(values["choice.fruit"]).toBe("Pear");
   });
 
   it("returns fresh bytes without touching the source", async () => {
