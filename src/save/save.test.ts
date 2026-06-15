@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createModel, setFieldValue } from "../model/document";
+import { addAnnotation, createModel, setFieldValue } from "../model/document";
+import { userSpacePoint } from "../model/geometry";
 import { loadPdfDocument } from "../pdf/document";
 import { saveModel } from "./save";
 
@@ -9,6 +10,24 @@ interface PdfWidget {
   subtype?: string;
   fieldName?: string;
   fieldValue?: string | string[] | null;
+}
+
+interface PdfTextItem {
+  str: string;
+  transform: number[];
+}
+
+function fontBytes(): Uint8Array {
+  return new Uint8Array(
+    readFileSync(fileURLToPath(new URL("../assets/fonts/NotoSans-Regular.ttf", import.meta.url))),
+  );
+}
+
+/** Extract text items (with baseline position) from a saved page via pdf.js. */
+async function textItems(bytes: Uint8Array, pageNumber: number): Promise<PdfTextItem[]> {
+  const doc = await loadPdfDocument(bytes);
+  const content = await (await doc.getPage(pageNumber)).getTextContent();
+  return content.items as unknown as PdfTextItem[];
 }
 
 /** Read each field's persisted value from the saved bytes via pdf.js. */
@@ -75,6 +94,27 @@ describe("saveModel empty round-trip", () => {
     expect(values["radio.color"]).toBe("1");
     expect(values["choice.city"]).toBe("Paris");
     expect(values["choice.fruit"]).toBe("Pear");
+  });
+
+  it("draws a text box whose content and baseline position survive re-open", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "text",
+      page: 0,
+      origin: userSpacePoint(72, 700),
+      width: 220,
+      height: 24,
+      text: "Hello kůň",
+      fontSize: 14,
+    });
+
+    const items = await textItems(await saveModel(model, { fontBytes: fontBytes() }), 1);
+
+    const joined = items.map((item) => item.str).join("");
+    expect(joined).toContain("Hello kůň");
+    const drawn = items.find((item) => item.str.includes("Hello"));
+    expect(drawn?.transform[4]).toBeCloseTo(72, 0);
+    expect(drawn?.transform[5]).toBeCloseTo(700, 0);
   });
 
   it("returns fresh bytes without touching the source", async () => {

@@ -5,9 +5,19 @@ import {
   PDFOptionList,
   PDFRadioGroup,
   PDFTextField,
+  rgb,
+  type PDFFont,
   type PDFForm,
+  type PDFPage,
 } from "pdf-lib";
-import type { DocumentModel, FieldValue } from "../model/document";
+import type { DocumentModel, FieldValue, TextBox } from "../model/document";
+import { embedUnicodeFont } from "./font";
+
+/** Inputs the projection needs from outside the pure model (e.g. font bytes). */
+export interface SaveOptions {
+  /** Bytes of the Unicode text font, required only when text boxes are present. */
+  readonly fontBytes?: Uint8Array;
+}
 
 /** Select a radio option, accepting either the option name or its index. */
 function selectRadio(group: PDFRadioGroup, value: string): void {
@@ -45,13 +55,35 @@ function applyFieldValue(form: PDFForm, { fieldName, value }: FieldValue): void 
 }
 
 /**
+ * Draw one text box onto its page. The model stores the origin as the box's
+ * bottom-left in unrotated user space — exactly pdf-lib's drawing space — so the
+ * coordinate maps straight through with no rotation maths (the seam handles
+ * rotation only for the screen). The baseline sits at the origin's y.
+ */
+function drawTextBox(page: PDFPage, font: PDFFont, box: TextBox): void {
+  if (box.text.length === 0) {
+    return;
+  }
+  page.drawText(box.text, {
+    x: box.origin.x,
+    y: box.origin.y,
+    size: box.fontSize,
+    font,
+    color: rgb(0, 0, 0),
+  });
+}
+
+/**
  * The save side of the seam: a pure projection from the document model to PDF
  * bytes via pdf-lib. No DOM, so it is fully unit-testable with golden-file
  * round-trips. Field values are applied through the AcroForm; appearances are
- * regenerated so the values show in every viewer, not just ones that rebuild
- * appearances. Free text (m3-7) and signatures (m4-5) extend this projection.
+ * regenerated so the values show in every viewer. Text boxes are drawn with the
+ * embedded Unicode font. Signatures (m4-5) extend this projection.
  */
-export async function saveModel(model: DocumentModel): Promise<Uint8Array> {
+export async function saveModel(
+  model: DocumentModel,
+  options: SaveOptions = {},
+): Promise<Uint8Array> {
   const doc = await PDFDocument.load(model.sourceBytes);
 
   if (model.fieldValues.length > 0) {
@@ -60,6 +92,21 @@ export async function saveModel(model: DocumentModel): Promise<Uint8Array> {
       applyFieldValue(form, fieldValue);
     }
     form.updateFieldAppearances();
+  }
+
+  const textBoxes = model.annotations.filter((a): a is TextBox => a.kind === "text");
+  if (textBoxes.length > 0) {
+    if (!options.fontBytes) {
+      throw new Error("saveModel: fontBytes are required to draw text annotations");
+    }
+    const font = await embedUnicodeFont(doc, options.fontBytes);
+    const pages = doc.getPages();
+    for (const box of textBoxes) {
+      const page = pages[box.page];
+      if (page) {
+        drawTextBox(page, font, box);
+      }
+    }
   }
 
   return doc.save();
