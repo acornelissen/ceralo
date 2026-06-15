@@ -1,10 +1,59 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { describe, expect, it } from "vitest";
 import { addAnnotation, createModel, setFieldValue } from "../model/document";
 import { userSpacePoint } from "../model/geometry";
 import { loadPdfDocument } from "../pdf/document";
 import { saveModel } from "./save";
+
+// A 1x1 transparent PNG; drawImage sets the displayed box, so pixel size is moot.
+const PNG_1x1 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+P+/HgAFhAJ/wlseKgAAAABJRU5ErkJggg==";
+
+function pngBytes(): Uint8Array {
+  return new Uint8Array(Buffer.from(PNG_1x1, "base64"));
+}
+
+type Matrix = [number, number, number, number, number, number];
+
+/** Compose two affine matrices the way a PDF `cm` operator updates the CTM. */
+function multiply(m: Matrix, t: Matrix): Matrix {
+  return [
+    m[0] * t[0] + m[2] * t[1],
+    m[1] * t[0] + m[3] * t[1],
+    m[0] * t[2] + m[2] * t[3],
+    m[1] * t[2] + m[3] * t[3],
+    m[0] * t[4] + m[2] * t[5] + m[4],
+    m[1] * t[4] + m[3] * t[5] + m[5],
+  ];
+}
+
+/**
+ * The full CTM in effect at each image paint on a page. pdf.js splits the
+ * placement across several transform ops, so we replay them through a
+ * save/restore stack to recover the composed matrix [a, b, c, d, e, f].
+ */
+async function imageTransforms(bytes: Uint8Array, pageNumber: number): Promise<Matrix[]> {
+  const doc = await loadPdfDocument(bytes);
+  const opList = await (await doc.getPage(pageNumber)).getOperatorList();
+  const transforms: Matrix[] = [];
+  let ctm: Matrix = [1, 0, 0, 1, 0, 0];
+  const stack: Matrix[] = [];
+  for (let i = 0; i < opList.fnArray.length; i += 1) {
+    const fn = opList.fnArray[i];
+    if (fn === OPS.save) {
+      stack.push(ctm);
+    } else if (fn === OPS.restore) {
+      ctm = stack.pop() ?? ctm;
+    } else if (fn === OPS.transform) {
+      ctm = multiply(ctm, opList.argsArray[i] as Matrix);
+    } else if (fn === OPS.paintImageXObject) {
+      transforms.push(ctm);
+    }
+  }
+  return transforms;
+}
 
 interface PdfWidget {
   subtype?: string;
@@ -146,6 +195,29 @@ describe("saveModel empty round-trip", () => {
     expect(page1).not.toContain("SecondPageNote");
     expect(page2).toContain("SecondPageNote");
     expect(page2).not.toContain("FirstPageNote");
+  });
+
+  it("embeds a signature image on its page at the expected box", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "signature",
+      page: 1,
+      origin: userSpacePoint(100, 200),
+      width: 120,
+      height: 60,
+      pngBytes: pngBytes(),
+    });
+
+    const saved = await saveModel(model);
+
+    expect(await imageTransforms(saved, 1)).toHaveLength(0); // nothing on page 1
+    const onPage2 = await imageTransforms(saved, 2);
+    expect(onPage2).toHaveLength(1);
+    const [a, , , d, e, f] = onPage2[0] ?? ([0, 0, 0, 0, 0, 0] as Matrix);
+    expect(a).toBeCloseTo(120, 0); // width
+    expect(d).toBeCloseTo(60, 0); // height
+    expect(e).toBeCloseTo(100, 0); // origin x
+    expect(f).toBeCloseTo(200, 0); // origin y
   });
 
   it("returns fresh bytes without touching the source", async () => {

@@ -10,7 +10,7 @@ import {
   type PDFForm,
   type PDFPage,
 } from "pdf-lib";
-import type { DocumentModel, FieldValue, TextBox } from "../model/document";
+import type { DocumentModel, FieldValue, SignatureStamp, TextBox } from "../model/document";
 import { embedUnicodeFont } from "./font";
 
 /** Inputs the projection needs from outside the pure model (e.g. font bytes). */
@@ -74,17 +74,37 @@ function drawTextBox(page: PDFPage, font: PDFFont, box: TextBox): void {
 }
 
 /**
+ * Embed and draw one signature stamp on its page. The PNG is composited with its
+ * transparency intact; the origin is the image's bottom-left in user space, which
+ * is pdf-lib's drawing space, so the box maps straight through.
+ */
+async function drawSignature(
+  doc: PDFDocument,
+  page: PDFPage,
+  stamp: SignatureStamp,
+): Promise<void> {
+  const image = await doc.embedPng(stamp.pngBytes);
+  page.drawImage(image, {
+    x: stamp.origin.x,
+    y: stamp.origin.y,
+    width: stamp.width,
+    height: stamp.height,
+  });
+}
+
+/**
  * The save side of the seam: a pure projection from the document model to PDF
  * bytes via pdf-lib. No DOM, so it is fully unit-testable with golden-file
  * round-trips. Field values are applied through the AcroForm; appearances are
  * regenerated so the values show in every viewer. Text boxes are drawn with the
- * embedded Unicode font. Signatures (m4-5) extend this projection.
+ * embedded Unicode font; signature stamps are embedded as PNG images.
  */
 export async function saveModel(
   model: DocumentModel,
   options: SaveOptions = {},
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(model.sourceBytes);
+  const pages = doc.getPages();
 
   if (model.fieldValues.length > 0) {
     const form = doc.getForm();
@@ -100,12 +120,21 @@ export async function saveModel(
       throw new Error("saveModel: fontBytes are required to draw text annotations");
     }
     const font = await embedUnicodeFont(doc, options.fontBytes);
-    const pages = doc.getPages();
     for (const box of textBoxes) {
       const page = pages[box.page];
       if (page) {
         drawTextBox(page, font, box);
       }
+    }
+  }
+
+  for (const stamp of model.annotations) {
+    if (stamp.kind !== "signature") {
+      continue;
+    }
+    const page = pages[stamp.page];
+    if (page) {
+      await drawSignature(doc, page, stamp);
     }
   }
 
