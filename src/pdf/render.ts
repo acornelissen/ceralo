@@ -1,4 +1,4 @@
-import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { AnnotationMode, type PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 /**
  * Render one page of a pdf.js document onto a canvas at the given scale. This
@@ -19,7 +19,15 @@ export async function renderPageToCanvas(
   }
   canvas.width = Math.floor(viewport.width);
   canvas.height = Math.floor(viewport.height);
-  await page.render({ canvas, canvasContext, viewport }).promise;
+  // ENABLE_FORMS renders the page and non-form annotations but NOT interactive
+  // form widgets — those are drawn by our HTML overlay, so the canvas must not
+  // paint them too (otherwise field values render twice).
+  await page.render({
+    canvas,
+    canvasContext,
+    viewport,
+    annotationMode: AnnotationMode.ENABLE_FORMS,
+  }).promise;
 }
 
 /** A rendered page and the overlay layer stacked over its canvas. */
