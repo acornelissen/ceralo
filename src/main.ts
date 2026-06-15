@@ -31,6 +31,7 @@ import {
   undo,
   type History,
 } from "./model/history";
+import { detectPlatform, matchShortcut } from "./app/shortcuts";
 import { createTextBoxAt } from "./annotations/text";
 import { createSignatureStampAt, type StampImage } from "./sign/stamp";
 import { bindStampDelete, bindStampDrag, bindStampScale, buildStampControl } from "./sign/overlay";
@@ -513,6 +514,39 @@ window.addEventListener("DOMContentLoaded", () => {
 
   document.querySelector<HTMLButtonElement>("#sign-tool")?.addEventListener("click", () => {
     openSignatureDialog(viewer);
+  });
+
+  // Keyboard shortcuts, resolved per platform (Cmd on macOS, Ctrl elsewhere).
+  const platform = detectPlatform(navigator.userAgent);
+  window.addEventListener("keydown", (event) => {
+    const action = matchShortcut(event, platform);
+    if (!action) {
+      return;
+    }
+    event.preventDefault();
+    switch (action) {
+      case "open":
+        run(() => openUserPdf(viewer), "open that PDF");
+        return;
+      case "save":
+        run(() => save(viewer), "save the PDF");
+        return;
+      case "save-as":
+        run(() => saveAs(viewer), "save the PDF");
+        return;
+      case "undo":
+        run(() => stepHistory(viewer, "undo"), "undo");
+        return;
+      case "redo":
+        run(() => stepHistory(viewer, "redo"), "redo");
+        return;
+      case "zoom-in":
+        run(() => setScale(viewer, viewer.scale * ZOOM_STEP), "zoom");
+        return;
+      case "zoom-out":
+        run(() => setScale(viewer, viewer.scale / ZOOM_STEP), "zoom");
+        return;
+    }
   });
 
   // Warn before leaving with unsaved changes.
