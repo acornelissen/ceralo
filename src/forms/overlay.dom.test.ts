@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Viewport } from "../model/coords";
 import type { PageGeometry } from "../model/document";
 import type { FormField } from "./fields";
-import { buildFieldControl } from "./overlay";
+import { applyFieldValue, bindFieldControl, buildFieldControl } from "./overlay";
 
 const page: PageGeometry = { index: 0, width: 612, height: 792, rotation: 0 };
 const viewport: Viewport = { scale: 1 };
@@ -96,5 +96,57 @@ describe("buildFieldControl (DOM)", () => {
       "Pear",
       "Plum",
     ]);
+  });
+});
+
+describe("field binding", () => {
+  const text: FormField = { name: "text.fullName", kind: "text", page: 0, rect };
+
+  it("reports text edits through onEdit", () => {
+    const input = buildFieldControl(text, page, viewport) as HTMLInputElement;
+    const edits: Array<[string, string | boolean]> = [];
+    bindFieldControl(input, text, (name, value) => edits.push([name, value]));
+    input.value = "Ada";
+    input.dispatchEvent(new Event("input"));
+    expect(edits).toEqual([["text.fullName", "Ada"]]);
+  });
+
+  it("reports a checkbox toggle as a boolean", () => {
+    const field: FormField = {
+      name: "check.agree",
+      kind: "checkbox",
+      page: 0,
+      rect,
+      onValue: "Yes",
+    };
+    const box = buildFieldControl(field, page, viewport) as HTMLInputElement;
+    let captured: string | boolean | undefined;
+    bindFieldControl(box, field, (_name, value) => (captured = value));
+    box.checked = true;
+    box.dispatchEvent(new Event("change"));
+    expect(captured).toBe(true);
+  });
+
+  it("reports the selected radio's value only when it becomes checked", () => {
+    const field: FormField = { name: "radio.color", kind: "radio", page: 0, rect, onValue: "1" };
+    const radio = buildFieldControl(field, page, viewport) as HTMLInputElement;
+    const seen: Array<string | boolean> = [];
+    bindFieldControl(radio, field, (_name, value) => seen.push(value));
+    radio.checked = true;
+    radio.dispatchEvent(new Event("change"));
+    expect(seen).toEqual(["1"]);
+  });
+
+  it("applies a model value back onto the control (re-render reflects the model)", () => {
+    const input = buildFieldControl(text, page, viewport) as HTMLInputElement;
+    applyFieldValue(input, "text", "Grace");
+    expect(input.value).toBe("Grace");
+
+    const field: FormField = { name: "radio.color", kind: "radio", page: 0, rect, onValue: "1" };
+    const radio = buildFieldControl(field, page, viewport) as HTMLInputElement;
+    applyFieldValue(radio, "radio", "1");
+    expect(radio.checked).toBe(true);
+    applyFieldValue(radio, "radio", "0");
+    expect(radio.checked).toBe(false);
   });
 });

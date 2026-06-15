@@ -7,9 +7,15 @@ import "./pdf/worker";
 import fixtureUrl from "../fixtures/two-page.pdf?url";
 import { invoke } from "@tauri-apps/api/core";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { createModel, markSaved, withPages, type DocumentModel } from "./model/document";
+import {
+  createModel,
+  markSaved,
+  setFieldValue,
+  withPages,
+  type DocumentModel,
+} from "./model/document";
 import { listFormFields, type FormField } from "./forms/fields";
-import { buildFieldControl } from "./forms/overlay";
+import { applyFieldValue, bindFieldControl, buildFieldControl } from "./forms/overlay";
 import { hasXfa } from "./forms/xfa";
 import { loadPdfDocument } from "./pdf/document";
 import { capturePageGeometry } from "./pdf/geometry";
@@ -59,9 +65,17 @@ async function rerender(viewer: Viewer): Promise<void> {
         continue;
       }
       const control = buildFieldControl(field, geometry, viewport);
-      if (control) {
-        page.overlay.appendChild(control);
+      if (!control) {
+        continue;
       }
+      const current = viewer.model.fieldValues.find((f) => f.fieldName === field.name)?.value;
+      applyFieldValue(control, field.kind, current);
+      bindFieldControl(control, field, (name, value) => {
+        if (viewer.model) {
+          viewer.model = setFieldValue(viewer.model, name, value);
+        }
+      });
+      page.overlay.appendChild(control);
     }
   }
 }

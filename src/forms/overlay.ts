@@ -1,7 +1,7 @@
 import { modelToScreen, type Viewport } from "../model/coords";
 import type { PageGeometry } from "../model/document";
 import { userSpacePoint } from "../model/geometry";
-import type { FormField } from "./fields";
+import type { FieldKind, FormField } from "./fields";
 
 /** A control's CSS box within a page overlay (pixels, top-left origin). */
 export interface ScreenRect {
@@ -61,6 +61,65 @@ export function buildFieldControl(
   control.dataset.fieldName = field.name;
   position(control, fieldScreenRect(field, page, viewport));
   return control;
+}
+
+/** Set a control's displayed value from the model. Controls hold no own state. */
+export function applyFieldValue(
+  control: HTMLElement,
+  kind: FieldKind,
+  value: string | boolean | undefined,
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (kind === "checkbox") {
+    (control as HTMLInputElement).checked = value === true;
+    return;
+  }
+  if (kind === "radio") {
+    const radio = control as HTMLInputElement;
+    radio.checked = radio.value === String(value);
+    return;
+  }
+  (control as HTMLInputElement | HTMLSelectElement).value = String(value);
+}
+
+/**
+ * Wire a control's edits to the model via onEdit. Every change routes through
+ * here, so the document model stays the single source of truth (m1 invariant 1).
+ */
+export function bindFieldControl(
+  control: HTMLElement,
+  field: FormField,
+  onEdit: (name: string, value: string | boolean) => void,
+): void {
+  const { name, kind } = field;
+  switch (kind) {
+    case "text":
+      control.addEventListener("input", () => {
+        onEdit(name, (control as HTMLInputElement).value);
+      });
+      return;
+    case "checkbox":
+      control.addEventListener("change", () => {
+        onEdit(name, (control as HTMLInputElement).checked);
+      });
+      return;
+    case "radio":
+      control.addEventListener("change", () => {
+        const radio = control as HTMLInputElement;
+        if (radio.checked) {
+          onEdit(name, radio.value);
+        }
+      });
+      return;
+    case "dropdown":
+    case "optionlist":
+      control.addEventListener("change", () => {
+        onEdit(name, (control as HTMLSelectElement).value);
+      });
+      return;
+  }
 }
 
 function populateOptions(select: HTMLSelectElement, options: readonly string[]): void {
