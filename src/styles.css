@@ -171,6 +171,19 @@ h1 {
   outline-offset: 1px;
 }
 
+/* Resize handle at the bottom-right corner. */
+.overlay .text-box-resize {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #396cd8;
+  border-radius: 2px;
+  background: #fff;
+  cursor: nwse-resize;
+}
+
 /* While the text tool is armed, the page reads as a place-to-click target. */
 .viewer.tool-text .overlay {
   cursor: crosshair;

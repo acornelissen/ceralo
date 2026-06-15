@@ -23,6 +23,7 @@ import { createTextBoxAt } from "./annotations/text";
 import {
   bindTextBoxControl,
   bindTextBoxDrag,
+  bindTextBoxResize,
   buildTextBoxControl,
   textBoxInput,
 } from "./annotations/overlay";
@@ -107,10 +108,12 @@ function placeTextBoxes(viewer: Viewer, page: RenderedPage, geometry: PageGeomet
     };
     const control = buildTextBoxControl(annotation, geometry, viewport);
     bindTextBoxControl(control, annotation, commit);
-    bindTextBoxDrag(control, annotation, geometry, viewport, (updated) => {
+    const commitAndRerender = (updated: TextBox): void => {
       commit(updated);
       void rerender(viewer);
-    });
+    };
+    bindTextBoxDrag(control, annotation, geometry, viewport, commitAndRerender);
+    bindTextBoxResize(control, annotation, geometry, viewport, commitAndRerender);
     page.overlay.appendChild(control);
     if (annotation.id === viewer.focusAnnotationId) {
       viewer.focusAnnotationId = null;

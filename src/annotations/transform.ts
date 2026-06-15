@@ -1,11 +1,46 @@
-import { screenToModel, type Viewport } from "../model/coords";
+import { modelToScreen, screenToModel, type Viewport } from "../model/coords";
 import type { PageGeometry, TextBox } from "../model/document";
-import { userSpacePoint, type ScreenPoint } from "../model/geometry";
+import { screenPoint, userSpacePoint, type ScreenPoint } from "../model/geometry";
 
-// Pure geometry for dragging text boxes. Both move (m3-3) and resize (m3-4)
-// convert a screen drag into a user-space delta through the one coordinate seam,
-// so they stay correct at any scale and rotation. Each returns a NEW box; the
+// Pure geometry for placing and dragging text boxes. Placement and both drags
+// (move m3-3, resize m3-4) go through the one coordinate seam, so they stay
+// correct at any scale and rotation. Each transform returns a NEW box; the
 // caller commits it through updateAnnotation.
+
+/** Smallest box the user can shrink to, in user-space units. */
+const MIN_SIZE = 8;
+
+/** A box's CSS rectangle within a page overlay (pixels, top-left origin). */
+export interface ScreenRect {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Convert a text box's user-space rectangle to its CSS box on screen by running
+ * two opposite corners through the seam and taking their bounding box, so it
+ * lines up with the rendered page at any scale and rotation.
+ */
+export function textBoxScreenRect(
+  box: TextBox,
+  page: PageGeometry,
+  viewport: Viewport,
+): ScreenRect {
+  const corner1 = modelToScreen(userSpacePoint(box.origin.x, box.origin.y), page, viewport);
+  const corner2 = modelToScreen(
+    userSpacePoint(box.origin.x + box.width, box.origin.y + box.height),
+    page,
+    viewport,
+  );
+  return {
+    left: Math.min(corner1.x, corner2.x),
+    top: Math.min(corner1.y, corner2.y),
+    width: Math.abs(corner1.x - corner2.x),
+    height: Math.abs(corner1.y - corner2.y),
+  };
+}
 
 /** The user-space vector covered by a screen drag from `from` to `to`. */
 function userSpaceDelta(
@@ -31,4 +66,34 @@ export function moveTextBox(
 ): TextBox {
   const { dx, dy } = userSpaceDelta(from, to, page, viewport);
   return { ...box, origin: userSpacePoint(box.origin.x + dx, box.origin.y + dy) };
+}
+
+/**
+ * Resize a text box by dragging its bottom-right handle. The opposite (top-left)
+ * corner stays anchored; both corners are taken back to user space through the
+ * seam and the new box is their bounding box, so resize is correct under
+ * rotation too. The box clamps to a minimum size.
+ */
+export function resizeTextBox(
+  box: TextBox,
+  from: ScreenPoint,
+  to: ScreenPoint,
+  page: PageGeometry,
+  viewport: Viewport,
+): TextBox {
+  const rect = textBoxScreenRect(box, page, viewport);
+  const anchor = screenToModel(screenPoint(rect.left, rect.top), page, viewport);
+  const handle = screenToModel(
+    screenPoint(rect.left + rect.width + (to.x - from.x), rect.top + rect.height + (to.y - from.y)),
+    page,
+    viewport,
+  );
+  const width = Math.max(MIN_SIZE, Math.abs(anchor.x - handle.x));
+  const height = Math.max(MIN_SIZE, Math.abs(anchor.y - handle.y));
+  return {
+    ...box,
+    origin: userSpacePoint(Math.min(anchor.x, handle.x), Math.min(anchor.y, handle.y)),
+    width,
+    height,
+  };
 }

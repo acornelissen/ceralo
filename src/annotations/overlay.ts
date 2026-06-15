@@ -1,47 +1,19 @@
-import { modelToScreen, type Viewport } from "../model/coords";
+import type { Viewport } from "../model/coords";
 import type { PageGeometry, TextBox } from "../model/document";
-import { screenPoint, userSpacePoint } from "../model/geometry";
-import { moveTextBox } from "./transform";
+import { screenPoint, type ScreenPoint } from "../model/geometry";
+import { moveTextBox, resizeTextBox, textBoxScreenRect, type ScreenRect } from "./transform";
 
 // The text-annotation overlay: a positioned, editable HTML layer drawn over the
 // rendered page. Like the form overlay it holds no state of its own — the box is
-// placed through the one coordinate seam and every edit, move, resize (m3-4) and
-// delete (m3-5) routes back to the model (invariant 1).
+// placed through the one coordinate seam (textBoxScreenRect) and every edit,
+// move, resize and delete (m3-5) routes back to the model (invariant 1).
 //
-// Each box is a container holding a move grip and an inner textarea. The grip is
-// the drag target so moving never fights text selection inside the textarea.
+// Each box is a container holding a move grip, an inner textarea and a resize
+// handle. The grip and handle are the drag targets so dragging never fights text
+// selection inside the textarea.
 
-/** A box's CSS rectangle within a page overlay (pixels, top-left origin). */
-export interface ScreenRect {
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-/**
- * Convert a text box's user-space rectangle to its CSS box on screen by running
- * two opposite corners through the seam and taking their bounding box, so it
- * lines up with the rendered page at any scale and rotation.
- */
-export function textBoxScreenRect(
-  box: TextBox,
-  page: PageGeometry,
-  viewport: Viewport,
-): ScreenRect {
-  const corner1 = modelToScreen(userSpacePoint(box.origin.x, box.origin.y), page, viewport);
-  const corner2 = modelToScreen(
-    userSpacePoint(box.origin.x + box.width, box.origin.y + box.height),
-    page,
-    viewport,
-  );
-  return {
-    left: Math.min(corner1.x, corner2.x),
-    top: Math.min(corner1.y, corner2.y),
-    width: Math.abs(corner1.x - corner2.x),
-    height: Math.abs(corner1.y - corner2.y),
-  };
-}
+// Re-exported so callers and tests have one import site for the overlay surface.
+export { textBoxScreenRect, type ScreenRect } from "./transform";
 
 function position(element: HTMLElement, rect: ScreenRect): void {
   element.style.left = `${rect.left}px`;
@@ -87,6 +59,11 @@ export function buildTextBoxControl(
   input.style.fontSize = `${box.fontSize * viewport.scale}px`;
   container.appendChild(input);
 
+  const handle = document.createElement("div");
+  handle.className = "text-box-resize";
+  handle.setAttribute("aria-hidden", "true");
+  container.appendChild(handle);
+
   return container;
 }
 
@@ -127,6 +104,42 @@ export function bindTextBoxControl(
 }
 
 /**
+ * Drag plumbing shared by the move grip and resize handle. On pointer-down it
+ * tracks the pointer on the window; `onLive` gets the running screen delta for
+ * visual feedback, and `onDone` gets the start/end screen points once, unless
+ * the pointer never moved (a click).
+ */
+function onHandleDrag(
+  handle: HTMLElement,
+  onStart: () => void,
+  onLive: (dx: number, dy: number) => void,
+  onDone: (from: ScreenPoint, to: ScreenPoint) => void,
+): void {
+  handle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    onStart();
+    const startX = event.clientX;
+    const startY = event.clientY;
+
+    const onPointerMove = (move: PointerEvent): void => {
+      onLive(move.clientX - startX, move.clientY - startY);
+    };
+
+    const onPointerUp = (up: PointerEvent): void => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      if (up.clientX === startX && up.clientY === startY) {
+        return; // a click, not a drag
+      }
+      onDone(screenPoint(startX, startY), screenPoint(up.clientX, up.clientY));
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  });
+}
+
+/**
  * Wire the move grip so dragging it repositions the box. The container follows
  * the pointer for live feedback; the committed move (origin in user space) is
  * computed through the seam and pushed to the model once on pointer-up.
@@ -142,31 +155,50 @@ export function bindTextBoxDrag(
   if (!grip) {
     return;
   }
+  let left = 0;
+  let top = 0;
+  onHandleDrag(
+    grip,
+    () => {
+      left = Number.parseFloat(container.style.left) || 0;
+      top = Number.parseFloat(container.style.top) || 0;
+    },
+    (dx, dy) => {
+      container.style.left = `${left + dx}px`;
+      container.style.top = `${top + dy}px`;
+    },
+    (from, to) => onMove(moveTextBox(box, from, to, page, viewport)),
+  );
+}
 
-  grip.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const startLeft = Number.parseFloat(container.style.left) || 0;
-    const startTop = Number.parseFloat(container.style.top) || 0;
-
-    const onPointerMove = (move: PointerEvent): void => {
-      container.style.left = `${startLeft + (move.clientX - startX)}px`;
-      container.style.top = `${startTop + (move.clientY - startY)}px`;
-    };
-
-    const onPointerUp = (up: PointerEvent): void => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      if (up.clientX === startX && up.clientY === startY) {
-        return; // a click, not a drag
-      }
-      const from = screenPoint(startX, startY);
-      const to = screenPoint(up.clientX, up.clientY);
-      onMove(moveTextBox(box, from, to, page, viewport));
-    };
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-  });
+/**
+ * Wire the resize handle so dragging it grows or shrinks the box. The container
+ * resizes live in screen pixels; the committed size (user space, rotation-aware)
+ * is computed through the seam and pushed to the model on pointer-up.
+ */
+export function bindTextBoxResize(
+  container: HTMLElement,
+  box: TextBox,
+  page: PageGeometry,
+  viewport: Viewport,
+  onResize: (updated: TextBox) => void,
+): void {
+  const handle = container.querySelector<HTMLElement>(".text-box-resize");
+  if (!handle) {
+    return;
+  }
+  let width = 0;
+  let height = 0;
+  onHandleDrag(
+    handle,
+    () => {
+      width = Number.parseFloat(container.style.width) || 0;
+      height = Number.parseFloat(container.style.height) || 0;
+    },
+    (dx, dy) => {
+      container.style.width = `${Math.max(1, width + dx)}px`;
+      container.style.height = `${Math.max(1, height + dy)}px`;
+    },
+    (from, to) => onResize(resizeTextBox(box, from, to, page, viewport)),
+  );
 }

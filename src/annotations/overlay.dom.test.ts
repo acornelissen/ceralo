@@ -2,7 +2,13 @@
 import { describe, expect, it } from "vitest";
 import type { PageGeometry, TextBox } from "../model/document";
 import { userSpacePoint } from "../model/geometry";
-import { bindTextBoxControl, bindTextBoxDrag, buildTextBoxControl, textBoxInput } from "./overlay";
+import {
+  bindTextBoxControl,
+  bindTextBoxDrag,
+  bindTextBoxResize,
+  buildTextBoxControl,
+  textBoxInput,
+} from "./overlay";
 
 const page: PageGeometry = { index: 0, width: 612, height: 792, rotation: 0 };
 const viewport = { scale: 1 };
@@ -114,5 +120,25 @@ describe("text box move", () => {
     window.dispatchEvent(pointer("pointerup", 10, 10));
 
     expect(moves).toHaveLength(0);
+  });
+});
+
+describe("text box resize", () => {
+  it("commits a larger box after dragging the resize handle out", () => {
+    // box() spans screen (72,72)-(312,92) at scale 1 (240 wide, 20 tall).
+    const original = box();
+    const container = buildTextBoxControl(original, page, viewport);
+    const resizes: TextBox[] = [];
+    bindTextBoxResize(container, original, page, viewport, (updated) => resizes.push(updated));
+
+    const handle = container.querySelector<HTMLElement>(".text-box-resize");
+    handle?.dispatchEvent(pointer("pointerdown", 312, 92));
+    window.dispatchEvent(pointer("pointermove", 352, 112));
+    window.dispatchEvent(pointer("pointerup", 352, 112));
+
+    // Drag handle right 40 / down 20 at scale 1: width +40, height +20.
+    expect(resizes).toHaveLength(1);
+    expect(resizes[0]?.width).toBeCloseTo(280);
+    expect(resizes[0]?.height).toBeCloseTo(40);
   });
 });
