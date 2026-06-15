@@ -1,6 +1,12 @@
 import type { Viewport } from "../model/coords";
 import type { PageGeometry, SignatureStamp } from "../model/document";
-import { annotationScreenRect, type ScreenRect } from "../annotations/transform";
+import { onHandleDrag } from "../annotations/drag";
+import {
+  annotationScreenRect,
+  moveStamp,
+  scaleStamp,
+  type ScreenRect,
+} from "../annotations/transform";
 import { pngBytesToDataUrl } from "./pad";
 
 // The signature-stamp overlay: a positioned image drawn over the rendered page.
@@ -73,4 +79,64 @@ export function bindStampDelete(
 ): void {
   const button = container.querySelector<HTMLButtonElement>(".stamp-delete");
   button?.addEventListener("click", () => onDelete(stamp.id));
+}
+
+/** Wire the move grip so dragging it repositions the stamp (origin in user space). */
+export function bindStampDrag(
+  container: HTMLElement,
+  stamp: SignatureStamp,
+  page: PageGeometry,
+  viewport: Viewport,
+  onMove: (updated: SignatureStamp) => void,
+): void {
+  const grip = container.querySelector<HTMLElement>(".stamp-grip");
+  if (!grip) {
+    return;
+  }
+  let left = 0;
+  let top = 0;
+  onHandleDrag(
+    grip,
+    () => {
+      left = Number.parseFloat(container.style.left) || 0;
+      top = Number.parseFloat(container.style.top) || 0;
+    },
+    (dx, dy) => {
+      container.style.left = `${left + dx}px`;
+      container.style.top = `${top + dy}px`;
+    },
+    (from, to) => onMove(moveStamp(stamp, from, to, page, viewport)),
+  );
+}
+
+/**
+ * Wire the resize handle so dragging it scales the stamp, preserving aspect
+ * ratio. The container resizes live in screen pixels (keeping the image's
+ * ratio); the committed size is computed through the seam on pointer-up.
+ */
+export function bindStampScale(
+  container: HTMLElement,
+  stamp: SignatureStamp,
+  page: PageGeometry,
+  viewport: Viewport,
+  onScale: (updated: SignatureStamp) => void,
+): void {
+  const handle = container.querySelector<HTMLElement>(".stamp-resize");
+  if (!handle) {
+    return;
+  }
+  const ratio = stamp.height / stamp.width;
+  let width = 0;
+  onHandleDrag(
+    handle,
+    () => {
+      width = Number.parseFloat(container.style.width) || 0;
+    },
+    (dx) => {
+      const next = Math.max(1, width + dx);
+      container.style.width = `${next}px`;
+      container.style.height = `${next * ratio}px`;
+    },
+    (from, to) => onScale(scaleStamp(stamp, from, to, page, viewport)),
+  );
 }

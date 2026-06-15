@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Viewport } from "../model/coords";
 import type { PageGeometry, TextBox } from "../model/document";
 import { screenPoint, userSpacePoint } from "../model/geometry";
-import { moveTextBox, resizeTextBox } from "./transform";
+import type { SignatureStamp } from "../model/document";
+import { moveStamp, moveTextBox, resizeTextBox, scaleStamp } from "./transform";
 
 const page: PageGeometry = { index: 0, width: 612, height: 792, rotation: 0 };
 
@@ -72,5 +73,53 @@ describe("resizeTextBox", () => {
     expect(resized.height).toBeGreaterThan(0);
     expect(resized.width).toBeLessThan(10);
     expect(resized.height).toBeLessThan(10);
+  });
+});
+
+function stamp(): SignatureStamp {
+  return {
+    kind: "signature",
+    id: "s1",
+    page: 0,
+    origin: userSpacePoint(100, 500),
+    width: 150,
+    height: 75,
+    pngBytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+  };
+}
+
+describe("moveStamp", () => {
+  it("shifts the origin by the user-space delta of a screen drag (scale 2)", () => {
+    const original = stamp();
+    const moved = moveStamp(original, screenPoint(10, 10), screenPoint(110, 50), page, {
+      scale: 2,
+    });
+
+    expect(moved.origin.x).toBeCloseTo(150); // +100 screen / 2
+    expect(moved.origin.y).toBeCloseTo(480); // -40 screen / 2 (y inverts)
+    expect(moved.pngBytes).toBe(original.pngBytes); // image preserved
+    expect(moved.width).toBe(original.width);
+  });
+});
+
+describe("scaleStamp", () => {
+  it("scales width and height by one factor, preserving aspect ratio", () => {
+    const original = stamp();
+    const ratio = original.width / original.height;
+    // Drag the handle right 30 user units at scale 1: width 150 -> 180 (x1.2).
+    const scaled = scaleStamp(original, screenPoint(0, 0), screenPoint(30, 0), page, { scale: 1 });
+
+    expect(scaled.width).toBeCloseTo(180);
+    expect(scaled.height).toBeCloseTo(90);
+    expect(scaled.width / scaled.height).toBeCloseTo(ratio);
+    expect(scaled.origin.x).toBe(original.origin.x); // origin anchored
+  });
+
+  it("clamps to a minimum width and never inverts", () => {
+    const scaled = scaleStamp(stamp(), screenPoint(0, 0), screenPoint(-9999, 0), page, {
+      scale: 1,
+    });
+    expect(scaled.width).toBeGreaterThan(0);
+    expect(scaled.height).toBeGreaterThan(0);
   });
 });

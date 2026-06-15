@@ -1,6 +1,6 @@
 import type { Viewport } from "../model/coords";
 import type { PageGeometry, TextBox } from "../model/document";
-import { screenPoint, type ScreenPoint } from "../model/geometry";
+import { onHandleDrag } from "./drag";
 import { moveTextBox, resizeTextBox, textBoxScreenRect, type ScreenRect } from "./transform";
 
 // The text-annotation overlay: a positioned, editable HTML layer drawn over the
@@ -122,42 +122,6 @@ export function bindTextBoxDelete(
 ): void {
   const button = container.querySelector<HTMLButtonElement>(".text-box-delete");
   button?.addEventListener("click", () => onDelete(box.id));
-}
-
-/**
- * Drag plumbing shared by the move grip and resize handle. On pointer-down it
- * tracks the pointer on the window; `onLive` gets the running screen delta for
- * visual feedback, and `onDone` gets the start/end screen points once, unless
- * the pointer never moved (a click).
- */
-function onHandleDrag(
-  handle: HTMLElement,
-  onStart: () => void,
-  onLive: (dx: number, dy: number) => void,
-  onDone: (from: ScreenPoint, to: ScreenPoint) => void,
-): void {
-  handle.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    onStart();
-    const startX = event.clientX;
-    const startY = event.clientY;
-
-    const onPointerMove = (move: PointerEvent): void => {
-      onLive(move.clientX - startX, move.clientY - startY);
-    };
-
-    const onPointerUp = (up: PointerEvent): void => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      if (up.clientX === startX && up.clientY === startY) {
-        return; // a click, not a drag
-      }
-      onDone(screenPoint(startX, startY), screenPoint(up.clientX, up.clientY));
-    };
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-  });
 }
 
 /**

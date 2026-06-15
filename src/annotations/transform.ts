@@ -1,5 +1,5 @@
 import { modelToScreen, screenToModel, type Viewport } from "../model/coords";
-import type { PageGeometry, TextBox } from "../model/document";
+import type { PageGeometry, SignatureStamp, TextBox } from "../model/document";
 import {
   screenPoint,
   userSpacePoint,
@@ -7,10 +7,10 @@ import {
   type UserSpacePoint,
 } from "../model/geometry";
 
-// Pure geometry for placing and dragging text boxes. Placement and both drags
-// (move m3-3, resize m3-4) go through the one coordinate seam, so they stay
-// correct at any scale and rotation. Each transform returns a NEW box; the
-// caller commits it through updateAnnotation.
+// Pure geometry for placing and dragging annotations (text boxes and signature
+// stamps). Placement and every drag (move, resize, scale) go through the one
+// coordinate seam, so they stay correct at any scale and rotation. Each
+// transform returns a NEW annotation; the caller commits via updateAnnotation.
 
 /** Smallest box the user can shrink to, in user-space units. */
 const MIN_SIZE = 8;
@@ -113,4 +113,35 @@ export function resizeTextBox(
     width,
     height,
   };
+}
+
+/** Move a signature stamp by a screen drag, shifting its origin in user space. */
+export function moveStamp(
+  stamp: SignatureStamp,
+  from: ScreenPoint,
+  to: ScreenPoint,
+  page: PageGeometry,
+  viewport: Viewport,
+): SignatureStamp {
+  const { dx, dy } = userSpaceDelta(from, to, page, viewport);
+  return { ...stamp, origin: userSpacePoint(stamp.origin.x + dx, stamp.origin.y + dy) };
+}
+
+/**
+ * Scale a signature stamp by dragging its bottom-right handle, preserving aspect
+ * ratio. The horizontal drag (in user space, via the seam) drives a uniform
+ * scale factor applied to both width and height; the origin (bottom-left) stays
+ * anchored. Clamps to a minimum width.
+ */
+export function scaleStamp(
+  stamp: SignatureStamp,
+  from: ScreenPoint,
+  to: ScreenPoint,
+  page: PageGeometry,
+  viewport: Viewport,
+): SignatureStamp {
+  const { dx } = userSpaceDelta(from, to, page, viewport);
+  const width = Math.max(MIN_SIZE, stamp.width + dx);
+  const factor = width / stamp.width;
+  return { ...stamp, width, height: stamp.height * factor };
 }

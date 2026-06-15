@@ -17,12 +17,13 @@ import {
   withPages,
   type DocumentModel,
   type PageGeometry,
+  type SignatureStamp,
   type TextBox,
 } from "./model/document";
 import { screenPoint } from "./model/geometry";
 import { createTextBoxAt } from "./annotations/text";
 import { createSignatureStampAt, type StampImage } from "./sign/stamp";
-import { bindStampDelete, buildStampControl } from "./sign/overlay";
+import { bindStampDelete, bindStampDrag, bindStampScale, buildStampControl } from "./sign/overlay";
 import { createSignaturePad, type SignaturePad } from "./sign/pad";
 import {
   bindTextBoxControl,
@@ -147,6 +148,14 @@ function placeStamps(viewer: Viewer, page: RenderedPage, geometry: PageGeometry)
       continue;
     }
     const control = buildStampControl(annotation, geometry, viewport);
+    const commitAndRerender = (updated: SignatureStamp): void => {
+      if (viewer.model) {
+        viewer.model = updateAnnotation(viewer.model, updated);
+        void rerender(viewer);
+      }
+    };
+    bindStampDrag(control, annotation, geometry, viewport, commitAndRerender);
+    bindStampScale(control, annotation, geometry, viewport, commitAndRerender);
     bindStampDelete(control, annotation, (id) => {
       if (viewer.model) {
         viewer.model = removeAnnotation(viewer.model, id);
