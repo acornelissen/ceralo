@@ -8,7 +8,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             pdf_io::open_pdf,
             pdf_io::save_pdf,
-            pdf_io::save_pdf_as
+            pdf_io::save_pdf_as,
+            pdf_io::open_image
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

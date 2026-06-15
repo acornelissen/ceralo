@@ -13,6 +13,10 @@ use tempfile::NamedTempFile;
 /// but stops a multi-gigabyte file from freezing the webview.
 pub const MAX_PDF_BYTES: u64 = 200 * 1024 * 1024;
 
+/// Upper bound on a signature image. A scanned signature is tiny; this only
+/// stops an absurd file from being slurped into the webview.
+pub const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
 /// Paths the user granted us this session by choosing them in an open or save
 /// dialog. save_pdf will only write to a path in this set, so a compromised
 /// webview cannot ask the backend to overwrite arbitrary files.
@@ -98,6 +102,14 @@ pub fn read_pdf_file(path: &Path) -> Result<Vec<u8>, ReadError> {
     Ok(std::fs::read(path)?)
 }
 
+/// Read a signature image's bytes from disk, refusing anything over the image
+/// size limit. Kept separate from the dialog so it can be unit-tested.
+pub fn read_image_file(path: &Path) -> Result<Vec<u8>, ReadError> {
+    let metadata = std::fs::metadata(path)?;
+    ensure_within_limit(metadata.len(), MAX_IMAGE_BYTES)?;
+    Ok(std::fs::read(path)?)
+}
+
 /// A canonical, comparable key for a path that works whether or not the file
 /// exists yet: the canonicalized parent directory (symlinks and `..` resolved)
 /// joined with the file name. Used to match a save target against granted paths.
@@ -167,6 +179,26 @@ pub async fn open_pdf(
     }))
 }
 
+/// Show a native open dialog filtered to PNG/JPEG, then return the chosen image's
+/// bytes for use as a signature. No path is granted (we never save back to it).
+/// Returns `Ok(None)` when the user cancels.
+#[tauri::command]
+pub async fn open_image(app: AppHandle) -> Result<Option<Vec<u8>>, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Image", &["png", "jpg", "jpeg"])
+        .blocking_pick_file();
+
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let bytes = read_image_file(&path).map_err(|e| e.to_string())?;
+    Ok(Some(bytes))
+}
+
 /// Save bytes to an already-granted path (Save). Refuses paths not granted this
 /// session.
 #[tauri::command]
@@ -223,6 +255,16 @@ mod tests {
         assert!(
             bytes.starts_with(b"%PDF-"),
             "fixture should start with the PDF magic header"
+        );
+    }
+
+    #[test]
+    fn reads_an_image_fixture_with_the_png_signature() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/signature.png");
+        let bytes = read_image_file(&path).expect("image fixture should be readable");
+        assert!(
+            bytes.starts_with(&[0x89, 0x50, 0x4e, 0x47]),
+            "fixture should start with the PNG magic header"
         );
     }
 

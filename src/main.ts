@@ -25,6 +25,7 @@ import { createTextBoxAt } from "./annotations/text";
 import { createSignatureStampAt, type StampImage } from "./sign/stamp";
 import { bindStampDelete, bindStampDrag, bindStampScale, buildStampControl } from "./sign/overlay";
 import { createSignaturePad, type SignaturePad } from "./sign/pad";
+import { importImageAsStamp } from "./sign/image";
 import {
   bindTextBoxControl,
   bindTextBoxDelete,
@@ -283,6 +284,26 @@ function openSignatureDialog(viewer: Viewer): void {
   dialog.showModal();
 }
 
+/**
+ * Import a signature from an image file: pick via Rust (open_image), rasterise
+ * to a transparent PNG, and arm placement. Unsupported or unreadable files
+ * surface on the status line.
+ */
+async function importSignature(viewer: Viewer, dialog: HTMLDialogElement): Promise<void> {
+  const data = await invoke<number[] | null>("open_image");
+  if (!data) {
+    return; // user cancelled
+  }
+  try {
+    const image = await importImageAsStamp(new Uint8Array(data), DEFAULT_STAMP_WIDTH);
+    setTextTool(viewer, false);
+    setStampTool(viewer, image);
+    dialog.close();
+  } catch (error) {
+    setStatus(viewer, `Could not import that image: ${String(error)}`);
+  }
+}
+
 /** Wire the dialog's clear/cancel/use actions to a freshly mounted pad. */
 function bindSignatureDialog(viewer: Viewer, dialog: HTMLDialogElement, pad: SignaturePad): void {
   const action = (id: string, run: () => void): void => {
@@ -293,6 +314,9 @@ function bindSignatureDialog(viewer: Viewer, dialog: HTMLDialogElement, pad: Sig
   };
   action("#signature-clear", () => pad.clear());
   action("#signature-cancel", () => dialog.close());
+  action("#signature-import", () => {
+    void importSignature(viewer, dialog);
+  });
   action("#signature-use", () => {
     if (pad.isEmpty()) {
       return;
