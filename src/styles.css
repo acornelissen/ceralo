@@ -68,6 +68,11 @@ h1 {
   outline-offset: 2px;
 }
 
+.toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .status {
   margin: 0.75rem 0 0;
   color: #b00020;

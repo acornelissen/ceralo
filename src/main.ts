@@ -21,6 +21,16 @@ import {
   type TextBox,
 } from "./model/document";
 import { screenPoint } from "./model/geometry";
+import {
+  canRedo,
+  canUndo,
+  createHistory,
+  record,
+  redo,
+  replacePresent,
+  undo,
+  type History,
+} from "./model/history";
 import { createTextBoxAt } from "./annotations/text";
 import { createSignatureStampAt, type StampImage } from "./sign/stamp";
 import { bindStampDelete, bindStampDrag, bindStampScale, buildStampControl } from "./sign/overlay";
@@ -72,6 +82,14 @@ interface Viewer {
   pendingStamp: StampImage | null;
   // Id of a just-created box to focus after the next re-render.
   focusAnnotationId: string | null;
+  // Undo/redo stack of model snapshots; present mirrors `model`.
+  history: History | null;
+}
+
+/** Apply a model edit and record it for undo. The model is the present snapshot. */
+function applyEdit(viewer: Viewer, next: DocumentModel): void {
+  viewer.model = next;
+  viewer.history = viewer.history ? record(viewer.history, next) : createHistory(next);
 }
 
 // Signature pad size (CSS px); the placed stamp keeps this aspect ratio.
@@ -100,7 +118,8 @@ function placeFormControls(viewer: Viewer, page: RenderedPage, geometry: PageGeo
     applyFieldValue(control, field.kind, edited ?? field.value);
     bindFieldControl(control, field, (name, value) => {
       if (viewer.model) {
-        viewer.model = setFieldValue(viewer.model, name, value);
+        applyEdit(viewer, setFieldValue(viewer.model, name, value));
+        updateHistoryButtons(viewer);
       }
     });
     page.overlay.appendChild(control);
@@ -116,7 +135,7 @@ function placeTextBoxes(viewer: Viewer, page: RenderedPage, geometry: PageGeomet
     }
     const commit = (updated: TextBox): void => {
       if (viewer.model) {
-        viewer.model = updateAnnotation(viewer.model, updated);
+        applyEdit(viewer, updateAnnotation(viewer.model, updated));
       }
     };
     const control = buildTextBoxControl(annotation, geometry, viewport);
@@ -129,7 +148,7 @@ function placeTextBoxes(viewer: Viewer, page: RenderedPage, geometry: PageGeomet
     bindTextBoxResize(control, annotation, geometry, viewport, commitAndRerender);
     bindTextBoxDelete(control, annotation, (id) => {
       if (viewer.model) {
-        viewer.model = removeAnnotation(viewer.model, id);
+        applyEdit(viewer, removeAnnotation(viewer.model, id));
         void rerender(viewer);
       }
     });
@@ -151,7 +170,7 @@ function placeStamps(viewer: Viewer, page: RenderedPage, geometry: PageGeometry)
     const control = buildStampControl(annotation, geometry, viewport);
     const commitAndRerender = (updated: SignatureStamp): void => {
       if (viewer.model) {
-        viewer.model = updateAnnotation(viewer.model, updated);
+        applyEdit(viewer, updateAnnotation(viewer.model, updated));
         void rerender(viewer);
       }
     };
@@ -159,7 +178,7 @@ function placeStamps(viewer: Viewer, page: RenderedPage, geometry: PageGeometry)
     bindStampScale(control, annotation, geometry, viewport, commitAndRerender);
     bindStampDelete(control, annotation, (id) => {
       if (viewer.model) {
-        viewer.model = removeAnnotation(viewer.model, id);
+        applyEdit(viewer, removeAnnotation(viewer.model, id));
         void rerender(viewer);
       }
     });
@@ -182,17 +201,14 @@ function armCreateTools(viewer: Viewer, page: RenderedPage, geometry: PageGeomet
     const viewport = { scale: viewer.scale };
 
     if (viewer.textTool) {
-      viewer.model = createTextBoxAt(viewer.model, click, geometry, viewport);
+      applyEdit(viewer, createTextBoxAt(viewer.model, click, geometry, viewport));
       viewer.focusAnnotationId =
         viewer.model.annotations[viewer.model.annotations.length - 1]?.id ?? null;
       setTextTool(viewer, false); // one box per activation
     } else if (viewer.pendingStamp) {
-      viewer.model = createSignatureStampAt(
-        viewer.model,
-        click,
-        geometry,
-        viewport,
-        viewer.pendingStamp,
+      applyEdit(
+        viewer,
+        createSignatureStampAt(viewer.model, click, geometry, viewport, viewer.pendingStamp),
       );
       setStampTool(viewer, null); // one placement per signature
     } else {
@@ -220,6 +236,7 @@ async function rerender(viewer: Viewer): Promise<void> {
     placeStamps(viewer, page, geometry);
     armCreateTools(viewer, page, geometry);
   }
+  updateHistoryButtons(viewer);
 }
 
 async function setDocument(viewer: Viewer, bytes: Uint8Array, path: string | null): Promise<void> {
@@ -227,8 +244,31 @@ async function setDocument(viewer: Viewer, bytes: Uint8Array, path: string | nul
   const pages = await capturePageGeometry(doc);
   viewer.doc = doc;
   viewer.model = withPages(createModel(bytes), pages);
+  viewer.history = createHistory(viewer.model); // fresh history per document
   viewer.fields = await listFormFields(doc);
   viewer.path = path;
+  await rerender(viewer);
+}
+
+/** Reflect undo/redo availability on the toolbar buttons. */
+function updateHistoryButtons(viewer: Viewer): void {
+  const undoButton = document.querySelector<HTMLButtonElement>("#undo");
+  const redoButton = document.querySelector<HTMLButtonElement>("#redo");
+  if (undoButton) {
+    undoButton.disabled = !viewer.history || !canUndo(viewer.history);
+  }
+  if (redoButton) {
+    redoButton.disabled = !viewer.history || !canRedo(viewer.history);
+  }
+}
+
+/** Step the history back or forward and re-render from the restored model. */
+async function stepHistory(viewer: Viewer, direction: "undo" | "redo"): Promise<void> {
+  if (!viewer.history) {
+    return;
+  }
+  viewer.history = direction === "undo" ? undo(viewer.history) : redo(viewer.history);
+  viewer.model = viewer.history.present;
   await rerender(viewer);
 }
 
@@ -332,6 +372,17 @@ function bindSignatureDialog(viewer: Viewer, dialog: HTMLDialogElement, pad: Sig
   });
 }
 
+/** Mark the document saved (dirty=false) without adding an undo step. */
+function markViewerSaved(viewer: Viewer): void {
+  if (!viewer.model) {
+    return;
+  }
+  viewer.model = markSaved(viewer.model);
+  if (viewer.history) {
+    viewer.history = replacePresent(viewer.history, viewer.model);
+  }
+}
+
 /** Project the model to bytes, supplying the font only when text must be drawn. */
 async function projectBytes(model: DocumentModel): Promise<Uint8Array> {
   const needsFont = model.annotations.some((a) => a.kind === "text");
@@ -365,7 +416,7 @@ async function save(viewer: Viewer): Promise<void> {
   }
   const bytes = await projectBytes(viewer.model);
   await invoke("save_pdf", { path: viewer.path, bytes: Array.from(bytes) });
-  viewer.model = markSaved(viewer.model);
+  markViewerSaved(viewer);
   setStatus(viewer, "Saved.");
 }
 
@@ -379,7 +430,7 @@ async function saveAs(viewer: Viewer): Promise<void> {
     return; // user cancelled the dialog
   }
   viewer.path = path;
-  viewer.model = markSaved(viewer.model);
+  markViewerSaved(viewer);
   setStatus(viewer, "Saved.");
 }
 
@@ -407,6 +458,7 @@ window.addEventListener("DOMContentLoaded", () => {
     textTool: false,
     pendingStamp: null,
     focusAnnotationId: null,
+    history: null,
   };
 
   const run = (action: () => Promise<void>, what: string): void => {
@@ -428,6 +480,8 @@ window.addEventListener("DOMContentLoaded", () => {
   on("#zoom-in", () => setScale(viewer, viewer.scale * ZOOM_STEP), "zoom");
   on("#zoom-out", () => setScale(viewer, viewer.scale / ZOOM_STEP), "zoom");
   on("#zoom-fit", () => fitWidth(viewer), "fit to width");
+  on("#undo", () => stepHistory(viewer, "undo"), "undo");
+  on("#redo", () => stepHistory(viewer, "redo"), "redo");
 
   viewer.textToolButton?.addEventListener("click", () => {
     setTextTool(viewer, !viewer.textTool);
