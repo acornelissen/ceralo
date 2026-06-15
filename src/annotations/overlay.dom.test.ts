@@ -4,6 +4,7 @@ import type { PageGeometry, TextBox } from "../model/document";
 import { userSpacePoint } from "../model/geometry";
 import {
   bindTextBoxControl,
+  bindTextBoxDelete,
   bindTextBoxDrag,
   bindTextBoxResize,
   buildTextBoxControl,
@@ -120,6 +121,21 @@ describe("text box move", () => {
     window.dispatchEvent(pointer("pointerup", 10, 10));
 
     expect(moves).toHaveLength(0);
+  });
+});
+
+describe("text box delete", () => {
+  it("removes exactly the selected box when its delete button is clicked", () => {
+    const original = box({ id: "keep-me" });
+    const container = buildTextBoxControl(original, page, viewport);
+    const deleted: string[] = [];
+    bindTextBoxDelete(container, original, (id) => deleted.push(id));
+
+    const button = container.querySelector<HTMLButtonElement>(".text-box-delete");
+    expect(button?.getAttribute("aria-label")).toBe("Delete text annotation");
+    button?.click();
+
+    expect(deleted).toEqual(["keep-me"]);
   });
 });
 

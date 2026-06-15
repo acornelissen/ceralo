@@ -59,6 +59,13 @@ export function buildTextBoxControl(
   input.style.fontSize = `${box.fontSize * viewport.scale}px`;
   container.appendChild(input);
 
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "text-box-delete";
+  remove.setAttribute("aria-label", "Delete text annotation");
+  remove.textContent = "×"; // ×
+  container.appendChild(remove);
+
   const handle = document.createElement("div");
   handle.className = "text-box-resize";
   handle.setAttribute("aria-hidden", "true");
@@ -101,6 +108,20 @@ export function bindTextBoxControl(
       onCommit({ ...box, text: input.value });
     }
   });
+}
+
+/**
+ * Wire the delete button so clicking it removes this box from the model. The
+ * caller commits with removeAnnotation, keeping the model the single source of
+ * truth.
+ */
+export function bindTextBoxDelete(
+  container: HTMLElement,
+  box: TextBox,
+  onDelete: (id: string) => void,
+): void {
+  const button = container.querySelector<HTMLButtonElement>(".text-box-delete");
+  button?.addEventListener("click", () => onDelete(box.id));
 }
 
 /**

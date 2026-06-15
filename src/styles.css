@@ -171,6 +171,32 @@ h1 {
   outline-offset: 1px;
 }
 
+/* Delete button at the top-right corner. */
+.overlay .text-box-delete {
+  position: absolute;
+  top: -14px;
+  right: -1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid #b00020;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: #b00020;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.overlay .text-box-delete:focus-visible {
+  outline: 2px solid #396cd8;
+  outline-offset: 1px;
+}
+
 /* Resize handle at the bottom-right corner. */
 .overlay .text-box-resize {
   position: absolute;

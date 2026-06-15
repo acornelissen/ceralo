@@ -12,6 +12,7 @@ import {
   createModel,
   markSaved,
   setFieldValue,
+  removeAnnotation,
   updateAnnotation,
   withPages,
   type DocumentModel,
@@ -22,6 +23,7 @@ import { screenPoint } from "./model/geometry";
 import { createTextBoxAt } from "./annotations/text";
 import {
   bindTextBoxControl,
+  bindTextBoxDelete,
   bindTextBoxDrag,
   bindTextBoxResize,
   buildTextBoxControl,
@@ -114,6 +116,12 @@ function placeTextBoxes(viewer: Viewer, page: RenderedPage, geometry: PageGeomet
     };
     bindTextBoxDrag(control, annotation, geometry, viewport, commitAndRerender);
     bindTextBoxResize(control, annotation, geometry, viewport, commitAndRerender);
+    bindTextBoxDelete(control, annotation, (id) => {
+      if (viewer.model) {
+        viewer.model = removeAnnotation(viewer.model, id);
+        void rerender(viewer);
+      }
+    });
     page.overlay.appendChild(control);
     if (annotation.id === viewer.focusAnnotationId) {
       viewer.focusAnnotationId = null;
