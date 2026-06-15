@@ -48,7 +48,8 @@ import {
 import { listFormFields, type FormField } from "./forms/fields";
 import { applyFieldValue, bindFieldControl, buildFieldControl } from "./forms/overlay";
 import { hasXfa } from "./forms/xfa";
-import { openPdfDocument, PasswordRequiredError, WrongPasswordError } from "./pdf/document";
+import { openPdfDocument } from "./pdf/document";
+import { openWithPassword } from "./app/password";
 import { capturePageGeometry } from "./pdf/geometry";
 import { renderAllPages, type RenderedPage } from "./pdf/render";
 import { isEncryptedPdf, saveModel, type SaveOptions } from "./save/save";
@@ -437,7 +438,10 @@ async function openUserPdf(viewer: Viewer): Promise<void> {
     setStatus(viewer, "This PDF uses an XFA form, which SignetPDF can't edit. It was not opened.");
     return;
   }
-  const doc = await openWithPassword(bytes);
+  const doc = await openWithPassword(
+    (password) => openPdfDocument(bytes, password),
+    askPasswordDialog,
+  );
   if (!doc) {
     return; // cancelled at the password prompt
   }
@@ -445,31 +449,32 @@ async function openUserPdf(viewer: Viewer): Promise<void> {
 }
 
 /**
- * Open a PDF, prompting for a password if it is protected (retrying until the
- * user cancels). Returns null on cancel. Empty-password encryption opens with
- * no prompt.
+ * Collect a PDF password through the in-app dialog (window.prompt is unsupported
+ * in the Tauri webview). Resolves to the entered password, or null if cancelled.
  */
-async function openWithPassword(bytes: Uint8Array): Promise<PDFDocumentProxy | null> {
-  let password: string | undefined;
-  for (;;) {
-    try {
-      return await openPdfDocument(bytes, password);
-    } catch (error) {
-      if (error instanceof PasswordRequiredError || error instanceof WrongPasswordError) {
-        const prompt =
-          error instanceof WrongPasswordError
-            ? "Incorrect password. Try again:"
-            : "This PDF is password-protected. Enter its password:";
-        const entered = window.prompt(prompt);
-        if (entered === null) {
-          return null; // user cancelled
-        }
-        password = entered;
-        continue;
-      }
-      throw error;
-    }
+function askPasswordDialog(incorrect: boolean): Promise<string | null> {
+  const dialog = document.querySelector<HTMLDialogElement>("#password-dialog");
+  const input = document.querySelector<HTMLInputElement>("#password-input");
+  const message = document.querySelector<HTMLElement>("#password-message");
+  if (!dialog || !input) {
+    return Promise.resolve(null);
   }
+  input.value = "";
+  if (message) {
+    message.textContent = incorrect
+      ? "Incorrect password. Try again."
+      : "This PDF is password-protected. Enter its password to open it.";
+  }
+  return new Promise((resolve) => {
+    const onClose = (): void => {
+      dialog.removeEventListener("close", onClose);
+      // The OK button submits with value "ok"; Cancel and Esc leave it otherwise.
+      resolve(dialog.returnValue === "ok" ? input.value : null);
+    };
+    dialog.addEventListener("close", onClose);
+    dialog.showModal();
+    input.focus();
+  });
 }
 
 /** True (with a status message) when saving is blocked because the doc is encrypted. */
