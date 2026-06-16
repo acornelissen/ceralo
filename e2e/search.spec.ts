@@ -62,3 +62,19 @@ test("next advances the current match", async ({ page }) => {
   await page.locator("#search-next").click();
   await expect(page.locator("#search-count")).toHaveText("2 of 2");
 });
+
+test("clears highlights when a query goes from matches to no results", async ({ page }) => {
+  await page.evaluate(() => {
+    document.getElementById("search-bar")!.hidden = false;
+  });
+  await page.fill("#search-input", "Page");
+  await expect(page.locator("#search-count")).toHaveText("1 of 2");
+  await page.fill("#search-input", "Pagezz");
+  await expect(page.locator("#search-count")).toHaveText("No results");
+  const residual = await page.evaluate(
+    () =>
+      (CSS.highlights.get("search-match")?.size ?? 0) +
+      (CSS.highlights.get("search-current")?.size ?? 0),
+  );
+  expect(residual).toBe(0);
+});

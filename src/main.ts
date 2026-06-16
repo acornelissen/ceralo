@@ -128,18 +128,23 @@ interface Viewer {
   pages: RenderedPage[];
   // Find-in-document state for the current model.
   search: SearchState;
+  // Bumped per search; a search applies its results only if still current, so a
+  // slow first query can't repaint stale matches over a newer one (race guard).
+  searchSeq: number;
 }
 
 interface SearchState {
   query: string;
-  // Per-page text, extracted lazily on the first search of a document.
+  // Per-page text, extracted lazily on the first search of a document, with the
+  // in-flight extraction shared so concurrent searches don't each re-extract.
   index: string[] | null;
+  indexPromise: Promise<string[]> | null;
   matches: SearchMatch[];
   current: number; // index into matches, -1 when none
 }
 
 function emptySearch(): SearchState {
-  return { query: "", index: null, matches: [], current: -1 };
+  return { query: "", index: null, indexPromise: null, matches: [], current: -1 };
 }
 
 /** Apply a model edit and record it for undo. The model is the present snapshot. */
@@ -310,21 +315,29 @@ function currentOrdinal(viewer: Viewer, page: number): number {
   return viewer.search.matches.filter((m) => m.page === page && m.start < cur.start).length;
 }
 
-/** Build the per-page text index once for the current document. */
+/** Build the per-page text index once for the current document, sharing the
+ * in-flight extraction so overlapping searches don't each rebuild it. */
 async function ensureSearchIndex(viewer: Viewer): Promise<string[]> {
   if (viewer.search.index) {
     return viewer.search.index;
+  }
+  if (viewer.search.indexPromise) {
+    return viewer.search.indexPromise;
   }
   const doc = viewer.doc;
   if (!doc) {
     return [];
   }
-  const pages: string[] = [];
-  for (let i = 1; i <= doc.numPages; i++) {
-    pages.push(await extractPageText(doc, i));
-  }
-  viewer.search.index = pages;
-  return pages;
+  const build = (async (): Promise<string[]> => {
+    const pages: string[] = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      pages.push(await extractPageText(doc, i));
+    }
+    viewer.search.index = pages;
+    return pages;
+  })();
+  viewer.search.indexPromise = build;
+  return build;
 }
 
 function updateSearchCount(viewer: Viewer): void {
@@ -402,6 +415,7 @@ function scrollToCurrentMatch(viewer: Viewer): void {
 /** Run a query: build the index, find matches, highlight and jump to the first. */
 async function runSearch(viewer: Viewer, query: string): Promise<void> {
   viewer.search.query = query;
+  const seq = ++viewer.searchSeq;
   if (query.trim() === "") {
     viewer.search.matches = [];
     viewer.search.current = -1;
@@ -414,13 +428,19 @@ async function runSearch(viewer: Viewer, query: string): Promise<void> {
   if (building) {
     showLoading(viewer, true);
   }
+  let index: string[];
   try {
-    viewer.search.matches = findMatches(await ensureSearchIndex(viewer), query);
+    index = await ensureSearchIndex(viewer);
   } finally {
     if (building) {
       showLoading(viewer, false);
     }
   }
+  // A newer query started while extracting; let it own the result.
+  if (seq !== viewer.searchSeq) {
+    return;
+  }
+  viewer.search.matches = findMatches(index, query);
   viewer.search.current = viewer.search.matches.length > 0 ? 0 : -1;
   updateSearchCount(viewer);
   refreshSearchHighlights(viewer);
@@ -729,6 +749,7 @@ async function setDocument(
   viewer.encrypted = await isEncryptedPdf(bytes);
   closeSearch(viewer); // a fresh document starts with no active search
   viewer.search = emptySearch();
+  viewer.searchSeq += 1; // invalidate any search still running on the old doc
   await rerender(viewer);
   showDocumentChrome(viewer, true);
   if (viewer.encrypted) {
@@ -1094,6 +1115,7 @@ window.addEventListener("DOMContentLoaded", () => {
     textLayers: new Map(),
     pages: [],
     search: emptySearch(),
+    searchSeq: 0,
   };
 
   // No document yet: show the empty-state screen, hide the dock and viewer.
