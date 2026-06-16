@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SignetPDF e2e harness</title>
+  </head>
+  <body>
+    <!-- Renders one fixture page (canvas + text layer + overlay) with the real
+         app code and CSS, so Playwright can drive selection in a real browser. -->
+    <div id="viewer" class="viewer"></div>
+    <script type="module" src="./harness.ts"></script>
+  </body>
+</html>

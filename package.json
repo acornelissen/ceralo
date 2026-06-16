@@ -9,6 +9,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && prettier --check .",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.0",
     "@tauri-apps/cli": "^2",
     "@types/node": "^22.19.21",
     "@vitest/coverage-v8": "^4.1.8",
