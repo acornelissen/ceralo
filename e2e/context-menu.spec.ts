@@ -18,11 +18,15 @@ test.beforeEach(async ({ page }) => {
         return cbId;
       },
       unregisterCallback: () => {},
-      invoke: async (cmd: string) => {
+      invoke: async (cmd: string, args?: { text?: string }) => {
         if (cmd === "open_pdf") return { path: "/fixture.pdf", bytes };
         if (cmd === "plugin:event|listen") {
           listenId += 1;
           return listenId;
+        }
+        if (cmd === "plugin:clipboard-manager|write_text") {
+          const w = window as unknown as { __clipboard: string[] };
+          (w.__clipboard ??= []).push(args?.text ?? "");
         }
         return null;
       },
@@ -84,6 +88,14 @@ test("a text selection offers Copy", async ({ page }) => {
 
   await page.mouse.click(sbox.x + sbox.width / 2, sbox.y + sbox.height / 2, { button: "right" });
   await expect(item(page, "Copy")).toBeVisible();
+
+  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? "");
+  await item(page, "Copy").click();
+  const written = await page.evaluate(
+    () => (window as unknown as { __clipboard?: string[] }).__clipboard ?? [],
+  );
+  expect(written).toEqual([selected]);
+  expect(selected.trim().length).toBeGreaterThan(0);
 });
 
 test("right-clicking a placed text box's chrome offers Edit and Delete", async ({ page }) => {

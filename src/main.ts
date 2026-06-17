@@ -47,6 +47,7 @@ import { createTextBoxAt } from "./annotations/text";
 import { createSignatureStampAt, type StampImage } from "./sign/stamp";
 import { bindStampDelete, bindStampDrag, bindStampScale, buildStampControl } from "./sign/overlay";
 import { createSignaturePad, type SignaturePad } from "./sign/pad";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { importImageAsStamp } from "./sign/image";
 import {
   bindTextBoxControl,
@@ -647,16 +648,29 @@ function pagePlacement(
   return { point: screenPoint(event.clientX - rect.left, event.clientY - rect.top), geometry };
 }
 
+/** Copy text to the system clipboard via the Tauri plugin (reliable in WKWebView). */
+async function copyText(viewer: Viewer, text: string): Promise<void> {
+  if (!text) {
+    return;
+  }
+  try {
+    await writeText(text);
+  } catch (error) {
+    notify(viewer, `Could not copy: ${String(error)}`, "error");
+  }
+}
+
 /** Run a chosen context-menu action against the model or viewer chrome. */
 function runContextAction(
   viewer: Viewer,
   target: ContextTarget,
   placement: StampPlacement | null,
+  selectionText: string,
   action: MenuActionKey,
 ): void {
   switch (action) {
     case "copy":
-      document.execCommand("copy"); // copies the live selection
+      void copyText(viewer, selectionText);
       return;
     case "fit-width":
       void fitWidth(viewer);
@@ -715,8 +729,10 @@ function handleContextMenu(viewer: Viewer, event: MouseEvent): void {
     return; // chrome: native menu suppressed, nothing custom to show
   }
   const placement = target.kind === "page" ? pagePlacement(viewer, target.page, event) : null;
+  // Capture the selected text now; the menu's focus would otherwise let it slip.
+  const selectionText = hasSelection ? (selection?.toString() ?? "") : "";
   openContextMenu(items, { x: event.clientX, y: event.clientY }, (action) =>
-    runContextAction(viewer, target, placement, action),
+    runContextAction(viewer, target, placement, selectionText, action),
   );
 }
 
