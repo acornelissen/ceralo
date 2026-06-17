@@ -14,7 +14,10 @@ pub fn run() {
             pdf_io::save_pdf_as,
             pdf_io::open_image,
             pdf_io::save_signature,
-            pdf_io::list_signatures
+            pdf_io::list_signatures,
+            pdf_io::rename_signature,
+            pdf_io::set_default_signature,
+            pdf_io::delete_signature
         ])
         // Drag-and-drop is handled in Rust so the dropped path is read and
         // granted backend-side and only the bytes reach the webview — the JS

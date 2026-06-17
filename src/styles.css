@@ -1115,12 +1115,27 @@ body.drag-over::after {
   white-space: nowrap;
 }
 
-/* Strip of reusable signatures to pick from, above the pad. */
+/* Strip of reusable signatures to pick from and manage, above the pad. */
 .saved-signatures {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin-bottom: var(--space-3);
+}
+
+/* One managed signature: a preview thumbnail above its name and actions. */
+.saved-signature-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.saved-signature-card.is-default {
+  border-color: var(--accent);
 }
 
 .saved-signature {
@@ -1146,6 +1161,58 @@ body.drag-over::after {
   width: 96px;
   height: 40px;
   object-fit: contain;
+}
+
+.saved-signature-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 112px;
+}
+
+.saved-signature-name {
+  font-size: 0.85rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-signature-default-badge {
+  align-self: flex-start;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.saved-signature-rename-input {
+  width: 100%;
+  padding: 2px var(--space-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.saved-signature-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.saved-signature-actions .btn {
+  padding: 2px var(--space-1);
+  font-size: 0.75rem;
+}
+
+.saved-signature-delete.is-confirming {
+  border-color: var(--danger, #c0392b);
+  color: var(--danger, #c0392b);
 }
 
 .signature-pad-host .signature-pad {

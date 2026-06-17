@@ -61,8 +61,16 @@ import {
   bindStampScale,
   buildStampControl,
 } from "./sign/overlay";
-import { createSignaturePad, pngBytesToDataUrl, type SignaturePad } from "./sign/pad";
-import { listSignatures, saveSignature } from "./sign/store";
+import { createSignaturePad, type SignaturePad } from "./sign/pad";
+import {
+  deleteSignature,
+  listSignatures,
+  renameSignature,
+  saveSignature,
+  setDefaultSignature,
+  type SavedSignature,
+} from "./sign/store";
+import { buildSavedSignatureCard, type SavedSignatureActions } from "./sign/manager";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { importImageAsStamp } from "./sign/image";
 import {
@@ -1147,7 +1155,12 @@ async function useSavedSignature(
   }
 }
 
-/** Fill the dialog's saved-signature strip; each thumbnail places that signature. */
+/**
+ * Fill the dialog's saved-signature strip. Each card previews a stored signature
+ * and lets the user place it, rename it, make it the default, or delete it. The
+ * default sorts first (Rust-side). Management actions persist via the store and
+ * then re-render the strip so it stays a pure projection of what is on disk.
+ */
 async function renderSavedSignatures(
   viewer: Viewer,
   dialog: HTMLDialogElement,
@@ -1157,7 +1170,7 @@ async function renderSavedSignatures(
   if (!strip) {
     return;
   }
-  let saved;
+  let saved: SavedSignature[];
   try {
     saved = await listSignatures();
   } catch (error) {
@@ -1166,19 +1179,27 @@ async function renderSavedSignatures(
   }
   strip.replaceChildren();
   strip.hidden = saved.length === 0;
-  saved.forEach((signature, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "saved-signature";
-    button.setAttribute("aria-label", `Use saved signature ${index + 1}`);
-    const img = document.createElement("img");
-    img.src = pngBytesToDataUrl(signature.pngBytes);
-    img.alt = "";
-    button.appendChild(img);
-    button.addEventListener("click", () => {
-      void useSavedSignature(viewer, dialog, signature.pngBytes, placement);
+
+  const reload = (): void => void renderSavedSignatures(viewer, dialog, placement);
+  const guard = (run: Promise<void>, whatFailed: string): void => {
+    run.then(reload).catch((error) => {
+      notify(viewer, `${whatFailed}: ${String(error)}`, "error");
     });
-    strip.appendChild(button);
+  };
+  const actions: SavedSignatureActions = {
+    onUse: (id) => {
+      const signature = saved.find((s) => s.id === id);
+      if (signature) {
+        void useSavedSignature(viewer, dialog, signature.pngBytes, placement);
+      }
+    },
+    onRename: (id, name) => guard(renameSignature(id, name), "Could not rename the signature"),
+    onSetDefault: (id) => guard(setDefaultSignature(id), "Could not set the default signature"),
+    onDelete: (id) => guard(deleteSignature(id), "Could not delete the signature"),
+  };
+
+  saved.forEach((signature, index) => {
+    strip.appendChild(buildSavedSignatureCard(signature, index, actions));
   });
 }
 

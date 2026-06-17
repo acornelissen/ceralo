@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tempfile::NamedTempFile;
@@ -181,19 +181,25 @@ pub fn write_pdf(granted: &HashSet<PathBuf>, path: &Path, bytes: &[u8]) -> Resul
     Ok(())
 }
 
-/// A signature PNG persisted under the app data dir for reuse across sessions.
+/// A signature PNG persisted under the app data dir for reuse across sessions,
+/// with its optional display name and whether it is the chosen default.
 #[derive(Serialize, Clone)]
 pub struct SavedSignature {
     pub id: String,
     pub png: Vec<u8>,
+    pub name: Option<String>,
+    pub is_default: bool,
 }
 
-/// Why persisting or listing a signature failed, with a user-facing message.
+/// Why persisting, listing, or managing a signature failed, with a user-facing
+/// message.
 #[derive(Debug)]
 pub enum SignatureError {
     Io(std::io::Error),
     TooLarge { size: u64, max: u64 },
     NotPng,
+    InvalidId,
+    NotFound,
 }
 
 impl fmt::Display for SignatureError {
@@ -205,8 +211,128 @@ impl fmt::Display for SignatureError {
                 "That signature image is too large ({size} bytes; limit is {max} bytes)."
             ),
             SignatureError::NotPng => write!(f, "A signature must be a PNG image."),
+            SignatureError::InvalidId => write!(f, "That signature id is not valid."),
+            SignatureError::NotFound => write!(f, "That signature no longer exists."),
         }
     }
+}
+
+/// Sidecar metadata for the saved signatures: a display name per id and which id
+/// (if any) is the default. Stored as `index.json` beside the PNGs so the PNG
+/// files stay named purely by their backend-generated id (the frontend never
+/// influences a path). Missing or unreadable index files mean "no metadata yet".
+#[derive(Serialize, Deserialize, Default)]
+struct SignatureIndex {
+    #[serde(default)]
+    default: Option<String>,
+    #[serde(default)]
+    names: std::collections::HashMap<String, String>,
+}
+
+/// The metadata sidecar's filename within the signatures dir.
+const INDEX_FILE: &str = "index.json";
+
+/// Longest signature display name we keep; longer input is truncated. The UI
+/// also caps the field, this is the defensive backstop.
+const MAX_NAME_LEN: usize = 100;
+
+/// True only for a well-formed signature id: 32 hex digits, exactly as produced
+/// by `signature_id`. Every frontend-supplied id is checked against this before
+/// it is joined into a path, so a crafted id such as `../secret` can never
+/// escape the signatures directory.
+fn is_valid_signature_id(id: &str) -> bool {
+    id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Read the metadata sidecar, defaulting to empty when it is absent or corrupt.
+fn read_index(dir: &Path) -> SignatureIndex {
+    std::fs::read(dir.join(INDEX_FILE))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+/// Write the metadata sidecar atomically, owner-only on unix (it names the
+/// user's signatures).
+fn write_index(dir: &Path, index: &SignatureIndex) -> Result<(), SignatureError> {
+    std::fs::create_dir_all(dir)?;
+    let bytes = serde_json::to_vec_pretty(index)
+        .map_err(|e| SignatureError::Io(std::io::Error::other(e)))?;
+    let path = dir.join(INDEX_FILE);
+    atomic_write(&path, &bytes)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+/// True if the signature `id` has a PNG on disk in `dir`. `id` is assumed valid.
+fn signature_exists(dir: &Path, id: &str) -> bool {
+    dir.join(format!("{id}.png")).exists()
+}
+
+/// Set (or, with a blank name, clear) the display name of a saved signature.
+/// Names are trimmed and capped; an unknown or malformed id is refused without
+/// touching the index.
+pub fn set_signature_name(dir: &Path, id: &str, name: &str) -> Result<(), SignatureError> {
+    if !is_valid_signature_id(id) {
+        return Err(SignatureError::InvalidId);
+    }
+    if !signature_exists(dir, id) {
+        return Err(SignatureError::NotFound);
+    }
+    let mut index = read_index(dir);
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        index.names.remove(id);
+    } else {
+        let capped: String = trimmed.chars().take(MAX_NAME_LEN).collect();
+        index.names.insert(id.to_string(), capped);
+    }
+    write_index(dir, &index)
+}
+
+/// Mark a saved signature as the default offered first in the picker. An unknown
+/// or malformed id is refused.
+pub fn set_signature_default(dir: &Path, id: &str) -> Result<(), SignatureError> {
+    if !is_valid_signature_id(id) {
+        return Err(SignatureError::InvalidId);
+    }
+    if !signature_exists(dir, id) {
+        return Err(SignatureError::NotFound);
+    }
+    let mut index = read_index(dir);
+    index.default = Some(id.to_string());
+    write_index(dir, &index)
+}
+
+/// Delete a saved signature's PNG and drop its metadata (name, and the default
+/// pointer if it pointed here). A malformed id is refused before any filesystem
+/// access; a missing PNG reports `NotFound`.
+pub fn remove_signature(dir: &Path, id: &str) -> Result<(), SignatureError> {
+    if !is_valid_signature_id(id) {
+        return Err(SignatureError::InvalidId);
+    }
+    let path = dir.join(format!("{id}.png"));
+    match std::fs::remove_file(&path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(SignatureError::NotFound)
+        }
+        Err(err) => return Err(err.into()),
+    }
+    let mut index = read_index(dir);
+    let mut changed = index.names.remove(id).is_some();
+    if index.default.as_deref() == Some(id) {
+        index.default = None;
+        changed = true;
+    }
+    if changed {
+        write_index(dir, &index)?;
+    }
+    Ok(())
 }
 
 impl From<std::io::Error> for SignatureError {
@@ -259,6 +385,7 @@ pub fn read_signatures(dir: &Path) -> Result<Vec<SavedSignature>, SignatureError
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(err) => return Err(err.into()),
     };
+    let index = read_index(dir);
     let mut signatures = Vec::new();
     for entry in entries {
         let path = entry?.path();
@@ -273,13 +400,21 @@ pub fn read_signatures(dir: &Path) -> Result<Vec<SavedSignature>, SignatureError
         let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
             continue;
         };
+        let is_default = index.default.as_deref() == Some(id);
         signatures.push(SavedSignature {
+            name: index.names.get(id).cloned(),
+            is_default,
             id: id.to_string(),
             png: std::fs::read(&path)?,
         });
     }
-    // Filenames are zero-padded timestamps, so a reverse lexical sort is newest first.
-    signatures.sort_by(|a, b| b.id.cmp(&a.id));
+    // Default first, then newest: filenames are zero-padded timestamps, so a
+    // reverse lexical sort on the id is newest-first.
+    signatures.sort_by(|a, b| {
+        b.is_default
+            .cmp(&a.is_default)
+            .then_with(|| b.id.cmp(&a.id))
+    });
     Ok(signatures)
 }
 
@@ -354,11 +489,33 @@ pub fn save_signature(app: AppHandle, bytes: Vec<u8>) -> Result<String, String> 
     Ok(id)
 }
 
-/// List the saved signatures (newest first) for the dialog to offer.
+/// List the saved signatures (default first, then newest) for the dialog to
+/// offer and manage.
 #[tauri::command]
 pub fn list_signatures(app: AppHandle) -> Result<Vec<SavedSignature>, String> {
     let dir = signatures_dir(&app)?;
     read_signatures(&dir).map_err(|e| e.to_string())
+}
+
+/// Rename a saved signature (a blank name clears it).
+#[tauri::command]
+pub fn rename_signature(app: AppHandle, id: String, name: String) -> Result<(), String> {
+    let dir = signatures_dir(&app)?;
+    set_signature_name(&dir, &id, &name).map_err(|e| e.to_string())
+}
+
+/// Make a saved signature the default offered first in the picker.
+#[tauri::command]
+pub fn set_default_signature(app: AppHandle, id: String) -> Result<(), String> {
+    let dir = signatures_dir(&app)?;
+    set_signature_default(&dir, &id).map_err(|e| e.to_string())
+}
+
+/// Delete a saved signature and its metadata.
+#[tauri::command]
+pub fn delete_signature(app: AppHandle, id: String) -> Result<(), String> {
+    let dir = signatures_dir(&app)?;
+    remove_signature(&dir, &id).map_err(|e| e.to_string())
 }
 
 /// Save bytes to an already-granted path (Save). Refuses paths not granted this
@@ -587,5 +744,112 @@ mod tests {
         let saved = read_signatures(dir.path()).unwrap();
         let ids: Vec<&str> = saved.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, vec![signature_id(3), signature_id(1)]);
+    }
+
+    #[test]
+    fn a_fresh_signature_has_no_name_and_is_not_default() {
+        let dir = tempfile::tempdir().unwrap();
+        write_signature(dir.path(), &signature_id(1), &png_bytes()).unwrap();
+        let saved = read_signatures(dir.path()).unwrap();
+        assert_eq!(saved[0].name, None);
+        assert!(!saved[0].is_default);
+    }
+
+    #[test]
+    fn naming_a_signature_round_trips_through_the_listing() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = signature_id(1);
+        write_signature(dir.path(), &id, &png_bytes()).unwrap();
+        set_signature_name(dir.path(), &id, "  Work  ").unwrap();
+        let saved = read_signatures(dir.path()).unwrap();
+        // The stored name is trimmed.
+        assert_eq!(saved[0].name.as_deref(), Some("Work"));
+    }
+
+    #[test]
+    fn an_empty_name_clears_a_previous_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = signature_id(1);
+        write_signature(dir.path(), &id, &png_bytes()).unwrap();
+        set_signature_name(dir.path(), &id, "Work").unwrap();
+        set_signature_name(dir.path(), &id, "   ").unwrap();
+        let saved = read_signatures(dir.path()).unwrap();
+        assert_eq!(saved[0].name, None);
+    }
+
+    #[test]
+    fn setting_a_default_marks_it_and_sorts_it_first() {
+        let dir = tempfile::tempdir().unwrap();
+        write_signature(dir.path(), &signature_id(1), &png_bytes()).unwrap();
+        write_signature(dir.path(), &signature_id(3), &png_bytes()).unwrap();
+        // The older signature is made default even though it is not the newest.
+        set_signature_default(dir.path(), &signature_id(1)).unwrap();
+        let saved = read_signatures(dir.path()).unwrap();
+        assert_eq!(saved[0].id, signature_id(1));
+        assert!(saved[0].is_default);
+        assert!(!saved[1].is_default);
+    }
+
+    #[test]
+    fn deleting_a_signature_removes_the_file_and_its_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = signature_id(1);
+        write_signature(dir.path(), &id, &png_bytes()).unwrap();
+        set_signature_name(dir.path(), &id, "Work").unwrap();
+        set_signature_default(dir.path(), &id).unwrap();
+
+        remove_signature(dir.path(), &id).unwrap();
+
+        assert!(!dir.path().join(format!("{id}.png")).exists());
+        assert!(read_signatures(dir.path()).unwrap().is_empty());
+        // The default pointer is cleared so a re-saved signature does not inherit it.
+        write_signature(dir.path(), &signature_id(2), &png_bytes()).unwrap();
+        assert!(!read_signatures(dir.path()).unwrap()[0].is_default);
+    }
+
+    #[test]
+    fn metadata_ops_reject_an_invalid_id() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            set_signature_name(dir.path(), "not-hex", "x"),
+            Err(SignatureError::InvalidId)
+        ));
+        assert!(matches!(
+            set_signature_default(dir.path(), "not-hex"),
+            Err(SignatureError::InvalidId)
+        ));
+        assert!(matches!(
+            remove_signature(dir.path(), "../../etc/passwd"),
+            Err(SignatureError::InvalidId)
+        ));
+    }
+
+    #[test]
+    fn deleting_an_id_with_a_traversal_attempt_touches_nothing_outside_the_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let sibling = dir.path().join("secret.png");
+        std::fs::write(&sibling, b"keep me").unwrap();
+        let signatures = dir.path().join("signatures");
+        std::fs::create_dir_all(&signatures).unwrap();
+        // A crafted id that would resolve to ../secret is refused before any fs op.
+        assert!(remove_signature(&signatures, "../secret").is_err());
+        assert!(
+            sibling.exists(),
+            "a traversal attempt must not delete a sibling"
+        );
+    }
+
+    #[test]
+    fn metadata_ops_on_a_missing_signature_report_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = signature_id(9);
+        assert!(matches!(
+            set_signature_name(dir.path(), &id, "x"),
+            Err(SignatureError::NotFound)
+        ));
+        assert!(matches!(
+            remove_signature(dir.path(), &id),
+            Err(SignatureError::NotFound)
+        ));
     }
 }
