@@ -56,6 +56,24 @@ test("Add text here places a focused text box at the click point", async ({ page
   await expect(menu(page)).toBeHidden();
 });
 
+test("keeps the text selection visible while the menu is open", async ({ page }) => {
+  const span = page.locator(".textLayer span").first();
+  const sbox = (await span.boundingBox())!;
+  await page.mouse.move(sbox.x + 2, sbox.y + sbox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(sbox.x + sbox.width - 2, sbox.y + sbox.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await page.mouse.click(sbox.x + sbox.width / 2, sbox.y + sbox.height / 2, { button: "right" });
+
+  await expect(menu(page)).toBeVisible();
+  const sel = await page.evaluate(() => {
+    const s = window.getSelection();
+    return { text: s?.toString() ?? "", collapsed: s?.isCollapsed ?? true };
+  });
+  expect(sel.text.trim().length).toBeGreaterThan(0);
+  expect(sel.collapsed).toBe(false);
+});
+
 test("a text selection offers Copy", async ({ page }) => {
   const span = page.locator(".textLayer span").first();
   const sbox = (await span.boundingBox())!;

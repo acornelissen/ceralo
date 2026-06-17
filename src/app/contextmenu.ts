@@ -123,6 +123,34 @@ export function closeContextMenu(): void {
 }
 
 /**
+ * Snapshot the current text selection so it can be re-applied. WebKit (the macOS
+ * WKWebView) clears the document selection when focus moves into the menu during
+ * the right-click event, which wipes the highlight the user is acting on. Capture
+ * the ranges before stealing focus and restore them after; the restored selection
+ * stays painted with the menu focused (verified in WebKit), so keyboard focus and
+ * the visible selection coexist. Returns a no-op when there is nothing selected.
+ */
+function captureSelection(): () => void {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return () => {};
+  }
+  const ranges = Array.from({ length: selection.rangeCount }, (_, i) =>
+    selection.getRangeAt(i).cloneRange(),
+  );
+  return () => {
+    const sel = window.getSelection();
+    if (!sel) {
+      return;
+    }
+    sel.removeAllRanges();
+    for (const range of ranges) {
+      sel.addRange(range);
+    }
+  };
+}
+
+/**
  * Open a floating menu of `items` at `point` (viewport coordinates). Activating
  * an item runs `onAction` with its action key. The menu is keyboard-navigable
  * (Up/Down/Home/End, Enter/Space to activate, Escape to cancel) and dismisses on
@@ -135,6 +163,7 @@ export function openContextMenu(
   point: MenuPoint,
   onAction: (action: MenuActionKey) => void,
 ): void {
+  const restoreSelection = captureSelection();
   closeContextMenu();
   const restoreFocus = document.activeElement;
 
@@ -220,4 +249,5 @@ export function openContextMenu(
   window.addEventListener("scroll", dismiss, true);
   window.addEventListener("resize", dismiss);
   focus(0);
+  restoreSelection(); // focusing the menu cleared the WebKit selection; put it back
 }
