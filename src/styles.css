@@ -980,7 +980,49 @@ body.drag-over::after {
 }
 
 .signature-actions #signature-import {
-  margin-right: auto; /* push the import action to the left */
+  margin-right: auto; /* push the import action (and the save toggle) left */
+}
+
+.signature-save-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+/* Strip of reusable signatures to pick from, above the pad. */
+.saved-signatures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.saved-signature {
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.saved-signature:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
+}
+
+.saved-signature:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.saved-signature img {
+  display: block;
+  width: 96px;
+  height: 40px;
+  object-fit: contain;
 }
 
 .signature-pad-host .signature-pad {

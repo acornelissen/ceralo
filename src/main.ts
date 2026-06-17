@@ -46,7 +46,8 @@ import { createToasts, type Toasts, type ToastVariant } from "./app/toast";
 import { createTextBoxAt } from "./annotations/text";
 import { createSignatureStampAt, type StampImage } from "./sign/stamp";
 import { bindStampDelete, bindStampDrag, bindStampScale, buildStampControl } from "./sign/overlay";
-import { createSignaturePad, type SignaturePad } from "./sign/pad";
+import { createSignaturePad, pngBytesToDataUrl, type SignaturePad } from "./sign/pad";
+import { listSignatures, saveSignature } from "./sign/store";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { importImageAsStamp } from "./sign/image";
 import {
@@ -1044,10 +1045,82 @@ function openSignatureDialog(viewer: Viewer, placement: StampPlacement | null = 
   if (!dialog || !host) {
     return;
   }
+  const save = dialog.querySelector<HTMLInputElement>("#signature-save");
+  if (save) {
+    save.checked = false; // opt-in afresh each time the dialog opens
+  }
   const pad = createSignaturePad(SIGNATURE_PAD.width, SIGNATURE_PAD.height);
   host.replaceChildren(pad.element);
   bindSignatureDialog(viewer, dialog, pad, placement);
+  void renderSavedSignatures(viewer, dialog, placement);
   dialog.showModal();
+}
+
+/** Persist a signature for reuse when the dialog's "Save for reuse" box is ticked. */
+async function persistSignatureIfRequested(
+  viewer: Viewer,
+  dialog: HTMLDialogElement,
+  pngBytes: Uint8Array,
+): Promise<void> {
+  if (!dialog.querySelector<HTMLInputElement>("#signature-save")?.checked) {
+    return;
+  }
+  try {
+    await saveSignature(pngBytes);
+  } catch (error) {
+    notify(viewer, `Could not save the signature: ${String(error)}`, "error");
+  }
+}
+
+/** Place a previously saved signature, rasterising it back into a stamp. */
+async function useSavedSignature(
+  viewer: Viewer,
+  dialog: HTMLDialogElement,
+  pngBytes: Uint8Array,
+  placement: StampPlacement | null,
+): Promise<void> {
+  try {
+    const image = await importImageAsStamp(pngBytes, DEFAULT_STAMP_WIDTH);
+    placeOrArmStamp(viewer, image, placement);
+    dialog.close();
+  } catch (error) {
+    notify(viewer, `Could not use that signature: ${String(error)}`, "error");
+  }
+}
+
+/** Fill the dialog's saved-signature strip; each thumbnail places that signature. */
+async function renderSavedSignatures(
+  viewer: Viewer,
+  dialog: HTMLDialogElement,
+  placement: StampPlacement | null,
+): Promise<void> {
+  const strip = dialog.querySelector<HTMLElement>("#saved-signatures");
+  if (!strip) {
+    return;
+  }
+  let saved;
+  try {
+    saved = await listSignatures();
+  } catch (error) {
+    notify(viewer, `Could not load saved signatures: ${String(error)}`, "error");
+    return;
+  }
+  strip.replaceChildren();
+  strip.hidden = saved.length === 0;
+  saved.forEach((signature, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "saved-signature";
+    button.setAttribute("aria-label", `Use saved signature ${index + 1}`);
+    const img = document.createElement("img");
+    img.src = pngBytesToDataUrl(signature.pngBytes);
+    img.alt = "";
+    button.appendChild(img);
+    button.addEventListener("click", () => {
+      void useSavedSignature(viewer, dialog, signature.pngBytes, placement);
+    });
+    strip.appendChild(button);
+  });
 }
 
 /**
@@ -1066,6 +1139,7 @@ async function importSignature(
   }
   try {
     const image = await importImageAsStamp(new Uint8Array(data), DEFAULT_STAMP_WIDTH);
+    void persistSignatureIfRequested(viewer, dialog, image.pngBytes);
     placeOrArmStamp(viewer, image, placement);
     dialog.close();
   } catch (error) {
@@ -1096,10 +1170,12 @@ function bindSignatureDialog(
       return;
     }
     const aspect = SIGNATURE_PAD.height / SIGNATURE_PAD.width;
+    const pngBytes = pad.exportPng();
+    void persistSignatureIfRequested(viewer, dialog, pngBytes);
     placeOrArmStamp(
       viewer,
       {
-        pngBytes: pad.exportPng(),
+        pngBytes,
         width: DEFAULT_STAMP_WIDTH,
         height: DEFAULT_STAMP_WIDTH * aspect,
       },

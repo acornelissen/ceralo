@@ -66,8 +66,19 @@
 
     <dialog id="signature-dialog" class="signature-dialog" aria-label="Draw your signature">
       <h2 class="signature-title">Draw your signature</h2>
+      <div
+        id="saved-signatures"
+        class="saved-signatures"
+        role="group"
+        aria-label="Saved signatures"
+        hidden
+      ></div>
       <div id="signature-pad-host" class="signature-pad-host"></div>
       <div class="signature-actions">
+        <label class="signature-save-toggle">
+          <input id="signature-save" type="checkbox" />
+          Save for reuse
+        </label>
         <button id="signature-import" class="btn btn-ghost" type="button">Import image…</button>
         <button id="signature-clear" class="btn btn-ghost" type="button">Clear</button>
         <button id="signature-cancel" class="btn btn-ghost" type="button">Cancel</button>
