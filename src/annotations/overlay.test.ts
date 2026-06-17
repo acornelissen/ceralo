@@ -16,6 +16,10 @@ function box(overrides: Partial<TextBox> = {}): TextBox {
     height: 20,
     text: "hi",
     fontSize: 12,
+    bold: false,
+    italic: false,
+    color: "#000000",
+    align: "left",
     ...overrides,
   };
 }

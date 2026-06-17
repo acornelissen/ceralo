@@ -41,5 +41,9 @@ export function createTextBoxAt(
     height: defaults.height,
     text: "",
     fontSize: defaults.fontSize,
+    bold: false,
+    italic: false,
+    color: "#000000",
+    align: "left",
   });
 }

@@ -9,6 +9,7 @@ import {
   moveStamp,
   moveTextBox,
   resizeTextBox,
+  nudgeFromKey,
   scaleStamp,
 } from "./transform";
 
@@ -24,6 +25,10 @@ function box(): TextBox {
     height: 24,
     text: "hi",
     fontSize: 12,
+    bold: false,
+    italic: false,
+    color: "#000000",
+    align: "left",
   };
 }
 
@@ -164,5 +169,44 @@ describe("growStamp", () => {
     const grown = growStamp(stamp(), -9999);
     expect(grown.width).toBe(8);
     expect(grown.height).toBeGreaterThan(0);
+  });
+});
+
+describe("nudgeFromKey", () => {
+  const key = (k: string, mods: { shiftKey?: boolean; altKey?: boolean } = {}) => ({
+    key: k,
+    shiftKey: mods.shiftKey ?? false,
+    altKey: mods.altKey ?? false,
+  });
+
+  it("maps an arrow to a 1pt move, scaled to screen pixels", () => {
+    expect(nudgeFromKey(key("ArrowRight"), 2)).toEqual({ kind: "move", dxScreen: 2, dyScreen: 0 });
+    expect(nudgeFromKey(key("ArrowUp"), 1)).toEqual({ kind: "move", dxScreen: 0, dyScreen: -1 });
+  });
+
+  it("uses a 10pt step with Shift", () => {
+    expect(nudgeFromKey(key("ArrowDown", { shiftKey: true }), 1)).toEqual({
+      kind: "move",
+      dxScreen: 0,
+      dyScreen: 10,
+    });
+  });
+
+  it("maps Alt+arrow to a user-space resize delta", () => {
+    expect(nudgeFromKey(key("ArrowRight", { altKey: true }), 3)).toEqual({
+      kind: "resize",
+      dw: 1,
+      dh: 0,
+    });
+    expect(nudgeFromKey(key("ArrowUp", { altKey: true, shiftKey: true }), 1)).toEqual({
+      kind: "resize",
+      dw: 0,
+      dh: -10,
+    });
+  });
+
+  it("ignores non-arrow keys", () => {
+    expect(nudgeFromKey(key("a"), 1)).toBeNull();
+    expect(nudgeFromKey(key("Enter"), 1)).toBeNull();
   });
 });

@@ -33,4 +33,13 @@ describe("createTextBoxAt", () => {
     expect(after.dirty).toBe(true);
     expect(before.annotations).toHaveLength(0);
   });
+
+  it("starts with regular, left-aligned, black formatting defaults", () => {
+    const model = createTextBoxAt(emptyModel(), screenPoint(100, 200), PAGE, VIEWPORT);
+    const box = model.annotations[0] as TextBox;
+    expect(box.bold).toBe(false);
+    expect(box.italic).toBe(false);
+    expect(box.color).toBe("#000000");
+    expect(box.align).toBe("left");
+  });
 });

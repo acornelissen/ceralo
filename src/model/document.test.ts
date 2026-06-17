@@ -103,6 +103,10 @@ describe("annotation mutations", () => {
     height: 24,
     text: "hello",
     fontSize: 12,
+    bold: false,
+    italic: false,
+    color: "#000000",
+    align: "left",
   };
 
   it("adds an annotation with a generated id and marks dirty", () => {

@@ -70,6 +70,10 @@ export function buildTextBoxControl(
   input.value = box.text;
   input.setAttribute("aria-label", "Text annotation");
   input.style.fontSize = `${box.fontSize * viewport.scale}px`;
+  input.style.fontWeight = box.bold ? "700" : "400";
+  input.style.fontStyle = box.italic ? "italic" : "normal";
+  input.style.color = box.color;
+  input.style.textAlign = box.align;
   container.appendChild(input);
 
   const remove = document.createElement("button");

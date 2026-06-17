@@ -12,6 +12,9 @@ export interface FieldValue {
   readonly value: string | boolean;
 }
 
+/** Horizontal alignment of a text box's lines within its width. */
+export type TextAlign = "left" | "center" | "right";
+
 /** A free-text annotation the user added. */
 export interface TextBox {
   readonly kind: "text";
@@ -22,6 +25,10 @@ export interface TextBox {
   readonly height: number;
   readonly text: string;
   readonly fontSize: number;
+  readonly bold: boolean;
+  readonly italic: boolean;
+  readonly color: string; // "#rrggbb"
+  readonly align: TextAlign;
 }
 
 /** A placed signature image. */

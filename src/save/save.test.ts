@@ -166,6 +166,10 @@ describe("saveModel empty round-trip", () => {
       height: 24,
       text: "Hello kůň",
       fontSize: 14,
+      bold: false,
+      italic: false,
+      color: "#000000",
+      align: "left",
     });
 
     const items = await textItems(await saveModel(model, { fontBytes: fontBytes() }), 1);
@@ -187,6 +191,10 @@ describe("saveModel empty round-trip", () => {
       height: 24,
       text: "FirstPageNote",
       fontSize: 12,
+      bold: false,
+      italic: false,
+      color: "#000000",
+      align: "left",
     });
     model = addAnnotation(model, {
       kind: "text",
@@ -196,6 +204,10 @@ describe("saveModel empty round-trip", () => {
       height: 24,
       text: "SecondPageNote",
       fontSize: 12,
+      bold: false,
+      italic: false,
+      color: "#000000",
+      align: "left",
     });
 
     const saved = await saveModel(model, { fontBytes: fontBytes() });

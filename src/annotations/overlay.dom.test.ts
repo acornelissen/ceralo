@@ -24,6 +24,10 @@ function box(overrides: Partial<TextBox> = {}): TextBox {
     height: 20,
     text: "hello",
     fontSize: 12,
+    bold: false,
+    italic: false,
+    color: "#000000",
+    align: "left",
     ...overrides,
   };
 }
@@ -45,6 +49,19 @@ describe("buildTextBoxControl (DOM)", () => {
   it("scales the font size with the viewport", () => {
     const container = buildTextBoxControl(box({ fontSize: 12 }), page, { scale: 2 });
     expect(textBoxInput(container).style.fontSize).toBe("24px");
+  });
+
+  it("reflects the box formatting on the textarea", () => {
+    const container = buildTextBoxControl(
+      box({ bold: true, italic: true, color: "#cc0000", align: "center" }),
+      page,
+      viewport,
+    );
+    const input = textBoxInput(container);
+    expect(input.style.fontWeight).toBe("700");
+    expect(input.style.fontStyle).toBe("italic");
+    expect(input.style.textAlign).toBe("center");
+    expect(input.style.color).toBe("rgb(204, 0, 0)");
   });
 });
 
