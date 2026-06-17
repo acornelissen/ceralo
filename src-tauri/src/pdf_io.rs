@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tempfile::NamedTempFile;
 
@@ -181,6 +181,108 @@ pub fn write_pdf(granted: &HashSet<PathBuf>, path: &Path, bytes: &[u8]) -> Resul
     Ok(())
 }
 
+/// A signature PNG persisted under the app data dir for reuse across sessions.
+#[derive(Serialize, Clone)]
+pub struct SavedSignature {
+    pub id: String,
+    pub png: Vec<u8>,
+}
+
+/// Why persisting or listing a signature failed, with a user-facing message.
+#[derive(Debug)]
+pub enum SignatureError {
+    Io(std::io::Error),
+    TooLarge { size: u64, max: u64 },
+    NotPng,
+}
+
+impl fmt::Display for SignatureError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SignatureError::Io(err) => write!(f, "Could not save the signature: {err}"),
+            SignatureError::TooLarge { size, max } => write!(
+                f,
+                "That signature image is too large ({size} bytes; limit is {max} bytes)."
+            ),
+            SignatureError::NotPng => write!(f, "A signature must be a PNG image."),
+        }
+    }
+}
+
+impl From<std::io::Error> for SignatureError {
+    fn from(err: std::io::Error) -> Self {
+        SignatureError::Io(err)
+    }
+}
+
+/// The 8-byte PNG file signature.
+const PNG_MAGIC: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/// A sortable, filesystem-safe id from a nanosecond timestamp: 32-char zero-
+/// padded hex, so lexical order matches chronological order. Generated backend-
+/// side so the frontend never influences the on-disk path.
+fn signature_id(nanos: u128) -> String {
+    format!("{nanos:032x}")
+}
+
+/// Persist a signature PNG into `dir` as `<id>.png`, creating `dir` if needed and
+/// restricting the file to the owner (0600 on unix) since signatures are
+/// sensitive. Validates the PNG magic and size before writing. Kept free of the
+/// AppHandle so it can be unit-tested against a tempdir.
+pub fn write_signature(dir: &Path, id: &str, bytes: &[u8]) -> Result<(), SignatureError> {
+    let size = bytes.len() as u64;
+    if size > MAX_IMAGE_BYTES {
+        return Err(SignatureError::TooLarge {
+            size,
+            max: MAX_IMAGE_BYTES,
+        });
+    }
+    if !bytes.starts_with(PNG_MAGIC) {
+        return Err(SignatureError::NotPng);
+    }
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join(format!("{id}.png"));
+    atomic_write(&path, bytes)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+/// List the saved signatures in `dir`, newest first. A missing directory means
+/// none have been saved yet. Kept AppHandle-free for unit testing.
+pub fn read_signatures(dir: &Path) -> Result<Vec<SavedSignature>, SignatureError> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(err.into()),
+    };
+    let mut signatures = Vec::new();
+    for entry in entries {
+        let path = entry?.path();
+        let is_png = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("png"))
+            .unwrap_or(false);
+        if !is_png {
+            continue;
+        }
+        let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        signatures.push(SavedSignature {
+            id: id.to_string(),
+            png: std::fs::read(&path)?,
+        });
+    }
+    // Filenames are zero-padded timestamps, so a reverse lexical sort is newest first.
+    signatures.sort_by(|a, b| b.id.cmp(&a.id));
+    Ok(signatures)
+}
+
 /// Show a native open dialog filtered to PDFs, then return the chosen file's
 /// path and bytes. The chosen path is granted for later in-place saves. Returns
 /// `Ok(None)` when the user cancels.
@@ -228,6 +330,35 @@ pub async fn open_image(app: AppHandle) -> Result<Option<Vec<u8>>, String> {
     let path = picked.into_path().map_err(|e| e.to_string())?;
     let bytes = read_image_file(&path).map_err(|e| e.to_string())?;
     Ok(Some(bytes))
+}
+
+/// The per-app local directory where reusable signatures live. Local data (not
+/// roaming/synced) since signatures are sensitive.
+fn signatures_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_local_data_dir()
+        .map(|dir| dir.join("signatures"))
+        .map_err(|e| e.to_string())
+}
+
+/// Persist a signature PNG for reuse and return its generated id.
+#[tauri::command]
+pub fn save_signature(app: AppHandle, bytes: Vec<u8>) -> Result<String, String> {
+    let dir = signatures_dir(&app)?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let id = signature_id(nanos);
+    write_signature(&dir, &id, &bytes).map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// List the saved signatures (newest first) for the dialog to offer.
+#[tauri::command]
+pub fn list_signatures(app: AppHandle) -> Result<Vec<SavedSignature>, String> {
+    let dir = signatures_dir(&app)?;
+    read_signatures(&dir).map_err(|e| e.to_string())
 }
 
 /// Save bytes to an already-granted path (Save). Refuses paths not granted this
@@ -377,5 +508,84 @@ mod tests {
         granted.insert(canonical_key(&path).unwrap());
         write_pdf(&granted, &path, b"new").unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"new");
+    }
+
+    // A minimal byte string that passes the PNG magic check.
+    fn png_bytes() -> Vec<u8> {
+        let mut bytes = PNG_MAGIC.to_vec();
+        bytes.extend_from_slice(b"body");
+        bytes
+    }
+
+    #[test]
+    fn signature_id_is_zero_padded_hex_and_sorts_chronologically() {
+        let earlier = signature_id(1);
+        let later = signature_id(2);
+        assert_eq!(earlier.len(), 32);
+        assert!(earlier < later, "older ids must sort before newer ones");
+    }
+
+    #[test]
+    fn writes_then_lists_a_signature() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("signatures");
+        let bytes = png_bytes();
+        write_signature(&path, &signature_id(1), &bytes).unwrap();
+
+        let saved = read_signatures(&path).unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].id, signature_id(1));
+        assert_eq!(saved[0].png, bytes);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn written_signature_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        write_signature(dir.path(), "abc", &png_bytes()).unwrap();
+        let mode = std::fs::metadata(dir.path().join("abc.png"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn write_signature_rejects_non_png() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = write_signature(dir.path(), "abc", b"not a png");
+        assert!(matches!(err, Err(SignatureError::NotPng)));
+        assert!(
+            !dir.path().join("abc.png").exists(),
+            "a rejected signature must not be written"
+        );
+    }
+
+    #[test]
+    fn write_signature_rejects_oversize() {
+        let dir = tempfile::tempdir().unwrap();
+        let oversize = vec![0u8; (MAX_IMAGE_BYTES + 1) as usize];
+        let err = write_signature(dir.path(), "abc", &oversize);
+        assert!(matches!(err, Err(SignatureError::TooLarge { .. })));
+    }
+
+    #[test]
+    fn read_signatures_is_empty_for_a_missing_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope");
+        assert!(read_signatures(&missing).unwrap().is_empty());
+    }
+
+    #[test]
+    fn read_signatures_ignores_non_png_files_and_sorts_newest_first() {
+        let dir = tempfile::tempdir().unwrap();
+        write_signature(dir.path(), &signature_id(1), &png_bytes()).unwrap();
+        write_signature(dir.path(), &signature_id(3), &png_bytes()).unwrap();
+        std::fs::write(dir.path().join("notes.txt"), b"ignore me").unwrap();
+
+        let saved = read_signatures(dir.path()).unwrap();
+        let ids: Vec<&str> = saved.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, vec![signature_id(3), signature_id(1)]);
     }
 }
