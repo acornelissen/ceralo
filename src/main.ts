@@ -4,7 +4,10 @@
 // save it back (Rust save_pdf / save_pdf_as). The DocumentModel is the source of
 // truth for saving and the dirty flag; status and failures surface as toasts.
 import "./pdf/worker";
-import fontUrl from "./assets/fonts/NotoSans-Regular.ttf?url";
+import regularFontUrl from "./assets/fonts/NotoSans-Regular.ttf?url";
+import boldFontUrl from "./assets/fonts/NotoSans-Bold.ttf?url";
+import italicFontUrl from "./assets/fonts/NotoSans-Italic.ttf?url";
+import boldItalicFontUrl from "./assets/fonts/NotoSans-BoldItalic.ttf?url";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -88,11 +91,28 @@ import "./pdf/textlayer.overrides.css"; // must load after textlayer.css to win
 import { isEncryptedPdf, saveModel, type SaveOptions } from "./save/save";
 import { clampScale, fitToWidthScale, stepZoom, zoomByDelta } from "./pdf/zoom";
 
-// The Unicode text font is a bundled asset fetched from 'self' (CSP-safe) and
-// cached: it is only needed when the model has text annotations to draw on save.
-let fontBytesCache: Uint8Array | null = null;
-async function loadFontBytes(): Promise<Uint8Array> {
-  fontBytesCache ??= new Uint8Array(await (await fetch(fontUrl)).arrayBuffer());
+// The Unicode text fonts (regular + bold/italic variants) are bundled assets
+// fetched from 'self' (CSP-safe) and cached: only needed when the model has text
+// annotations to draw on save. The keys match SaveOptions so they spread in.
+interface TextFontBytes {
+  fontBytes: Uint8Array;
+  boldFontBytes: Uint8Array;
+  italicFontBytes: Uint8Array;
+  boldItalicFontBytes: Uint8Array;
+}
+let fontBytesCache: TextFontBytes | null = null;
+async function loadFontBytes(): Promise<TextFontBytes> {
+  if (!fontBytesCache) {
+    const fetchBytes = async (url: string): Promise<Uint8Array> =>
+      new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const [fontBytes, boldFontBytes, italicFontBytes, boldItalicFontBytes] = await Promise.all([
+      fetchBytes(regularFontUrl),
+      fetchBytes(boldFontUrl),
+      fetchBytes(italicFontUrl),
+      fetchBytes(boldItalicFontUrl),
+    ]);
+    fontBytesCache = { fontBytes, boldFontBytes, italicFontBytes, boldItalicFontBytes };
+  }
   return fontBytesCache;
 }
 
@@ -1221,7 +1241,7 @@ async function projectBytes(
   const needsFont = model.annotations.some((a) => a.kind === "text");
   const options: SaveOptions = {
     ...extra,
-    ...(needsFont ? { fontBytes: await loadFontBytes() } : {}),
+    ...(needsFont ? await loadFontBytes() : {}),
   };
   return saveModel(model, options);
 }

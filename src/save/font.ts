@@ -16,3 +16,40 @@ export async function embedUnicodeFont(doc: PDFDocument, fontBytes: Uint8Array):
   doc.registerFontkit(fontkit);
   return doc.embedFont(fontBytes, { subset: true });
 }
+
+/** The text-font variant bytes; only `regular` is required (others fall back). */
+export interface TextFontVariants {
+  readonly regular: Uint8Array;
+  readonly bold?: Uint8Array | undefined;
+  readonly italic?: Uint8Array | undefined;
+  readonly boldItalic?: Uint8Array | undefined;
+}
+
+/** Picks the embedded font for a given weight/style. */
+export interface EmbeddedTextFonts {
+  fontFor(bold: boolean, italic: boolean): PDFFont;
+}
+
+/**
+ * Embed the available text-font variants and return a selector. Any missing
+ * variant falls back to the next best already-embedded face (bold-italic →
+ * bold → regular, italic → regular), so a partial set still produces valid
+ * output. Each face is subset on save.
+ */
+export async function embedTextFonts(
+  doc: PDFDocument,
+  variants: TextFontVariants,
+): Promise<EmbeddedTextFonts> {
+  doc.registerFontkit(fontkit);
+  const regular = await doc.embedFont(variants.regular, { subset: true });
+  const bold = variants.bold ? await doc.embedFont(variants.bold, { subset: true }) : regular;
+  const italic = variants.italic ? await doc.embedFont(variants.italic, { subset: true }) : regular;
+  const boldItalic = variants.boldItalic
+    ? await doc.embedFont(variants.boldItalic, { subset: true })
+    : bold !== regular
+      ? bold
+      : italic;
+  return {
+    fontFor: (b, i) => (b && i ? boldItalic : b ? bold : i ? italic : regular),
+  };
+}

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { addAnnotation, createModel, setFieldValue } from "../model/document";
 import { userSpacePoint } from "../model/geometry";
 import { loadPdfDocument } from "../pdf/document";
-import { EncryptedSaveError, isEncryptedPdf, saveModel } from "./save";
+import { EncryptedSaveError, hexToRgb, isEncryptedPdf, saveModel } from "./save";
 
 // A 1x1 transparent PNG; drawImage sets the displayed box, so pixel size is moot.
 const PNG_1x1 =
@@ -218,6 +218,50 @@ describe("saveModel empty round-trip", () => {
     expect(page1).not.toContain("SecondPageNote");
     expect(page2).toContain("SecondPageNote");
     expect(page2).not.toContain("FirstPageNote");
+  });
+
+  it("right-aligns a line further along x than left alignment", async () => {
+    const base = {
+      kind: "text",
+      page: 0,
+      origin: userSpacePoint(72, 700),
+      width: 300,
+      height: 24,
+      text: "Hi",
+      fontSize: 14,
+      bold: false,
+      italic: false,
+      color: "#000000",
+    } as const;
+    const leftModel = addAnnotation(createModel(fixture("two-page.pdf")), {
+      ...base,
+      align: "left",
+    });
+    const rightModel = addAnnotation(createModel(fixture("two-page.pdf")), {
+      ...base,
+      align: "right",
+    });
+
+    const drawnX = async (model: typeof leftModel) =>
+      (await textItems(await saveModel(model, { fontBytes: fontBytes() }), 1)).find((i) =>
+        i.str.includes("Hi"),
+      )?.transform[4];
+
+    const leftX = await drawnX(leftModel);
+    const rightX = await drawnX(rightModel);
+    expect(leftX).toBeCloseTo(72, 0); // left edge at the origin
+    expect(rightX).toBeGreaterThan(leftX!); // right alignment pushes it along x
+  });
+});
+
+describe("hexToRgb", () => {
+  it("parses #rrggbb into 0..1 components", () => {
+    expect(hexToRgb("#cc0000")).toEqual({ r: 0.8, g: 0, b: 0 });
+    expect(hexToRgb("#ffffff")).toEqual({ r: 1, g: 1, b: 1 });
+  });
+
+  it("falls back to black for an unparseable value", () => {
+    expect(hexToRgb("nope")).toEqual({ r: 0, g: 0, b: 0 });
   });
 
   it("embeds a signature image on its page at the expected box", async () => {

@@ -6,22 +6,40 @@ import {
   PDFRadioGroup,
   PDFTextField,
   rgb,
-  type PDFFont,
   type PDFForm,
   type PDFPage,
 } from "pdf-lib";
 import type { DocumentModel, FieldValue, SignatureStamp, TextBox } from "../model/document";
-import { embedUnicodeFont } from "./font";
+import { embedTextFonts, type EmbeddedTextFonts } from "./font";
 
 /** Inputs the projection needs from outside the pure model (e.g. font bytes). */
 export interface SaveOptions {
-  /** Bytes of the Unicode text font, required only when text boxes are present. */
+  /**
+   * Bytes of the regular Unicode text font, required only when text boxes are
+   * present. The bold/italic variants are optional; missing ones fall back.
+   */
   readonly fontBytes?: Uint8Array;
+  readonly boldFontBytes?: Uint8Array;
+  readonly italicFontBytes?: Uint8Array;
+  readonly boldItalicFontBytes?: Uint8Array;
   /**
    * Bake filled form fields into static page content with no editable layer.
    * Annotations are already drawn content, so this only affects AcroForm fields.
    */
   readonly flatten?: boolean;
+}
+
+/** Parse a "#rrggbb" colour into a pdf-lib rgb() value (components 0..1). */
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const match = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!match) {
+    return { r: 0, g: 0, b: 0 }; // unknown colour saves as black
+  }
+  return {
+    r: parseInt(match[1]!, 16) / 255,
+    g: parseInt(match[2]!, 16) / 255,
+    b: parseInt(match[3]!, 16) / 255,
+  };
 }
 
 /**
@@ -88,16 +106,35 @@ function applyFieldValue(form: PDFForm, { fieldName, value }: FieldValue): void 
  * coordinate maps straight through with no rotation maths (the seam handles
  * rotation only for the screen). The baseline sits at the origin's y.
  */
-function drawTextBox(page: PDFPage, font: PDFFont, box: TextBox): void {
+/** Line advance as a multiple of font size, matching the editor's line-height. */
+const LINE_HEIGHT_FACTOR = 1.15;
+
+function drawTextBox(page: PDFPage, fonts: EmbeddedTextFonts, box: TextBox): void {
   if (box.text.length === 0) {
     return;
   }
-  page.drawText(box.text, {
-    x: box.origin.x,
-    y: box.origin.y,
-    size: box.fontSize,
-    font,
-    color: rgb(0, 0, 0),
+  const font = fonts.fontFor(box.bold, box.italic);
+  const { r, g, b } = hexToRgb(box.color);
+  const color = rgb(r, g, b);
+  const lineHeight = box.fontSize * LINE_HEIGHT_FACTOR;
+  // Lay out lines ourselves so each can be aligned within the box width; the
+  // first line's baseline stays at the origin, matching the single-line case.
+  box.text.split("\n").forEach((line, index) => {
+    const lineWidth = font.widthOfTextAtSize(line, box.fontSize);
+    const slack = box.width - lineWidth;
+    const x =
+      box.align === "right"
+        ? box.origin.x + slack
+        : box.align === "center"
+          ? box.origin.x + slack / 2
+          : box.origin.x;
+    page.drawText(line, {
+      x,
+      y: box.origin.y - index * lineHeight,
+      size: box.fontSize,
+      font,
+      color,
+    });
   });
 }
 
@@ -157,11 +194,16 @@ export async function saveModel(
     if (!options.fontBytes) {
       throw new Error("saveModel: fontBytes are required to draw text annotations");
     }
-    const font = await embedUnicodeFont(doc, options.fontBytes);
+    const fonts = await embedTextFonts(doc, {
+      regular: options.fontBytes,
+      bold: options.boldFontBytes,
+      italic: options.italicFontBytes,
+      boldItalic: options.boldItalicFontBytes,
+    });
     for (const box of textBoxes) {
       const page = pages[box.page];
       if (page) {
-        drawTextBox(page, font, box);
+        drawTextBox(page, fonts, box);
       }
     }
   }
