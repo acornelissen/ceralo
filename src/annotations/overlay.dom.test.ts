@@ -28,6 +28,7 @@ function box(overrides: Partial<TextBox> = {}): TextBox {
     italic: false,
     color: "#000000",
     align: "left",
+    family: "sans",
     ...overrides,
   };
 }
@@ -62,6 +63,18 @@ describe("buildTextBoxControl (DOM)", () => {
     expect(input.style.fontStyle).toBe("italic");
     expect(input.style.textAlign).toBe("center");
     expect(input.style.color).toBe("rgb(204, 0, 0)");
+  });
+
+  it("maps the font family to a generic CSS family on the textarea", () => {
+    expect(textBoxInput(buildTextBoxControl(box(), page, viewport)).style.fontFamily).toBe(
+      "sans-serif",
+    );
+    expect(
+      textBoxInput(buildTextBoxControl(box({ family: "serif" }), page, viewport)).style.fontFamily,
+    ).toBe("serif");
+    expect(
+      textBoxInput(buildTextBoxControl(box({ family: "mono" }), page, viewport)).style.fontFamily,
+    ).toBe("monospace");
   });
 });
 

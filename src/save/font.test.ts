@@ -53,33 +53,39 @@ describe("embedUnicodeFont", () => {
 });
 
 describe("embedTextFonts", () => {
-  it("selects a distinct embedded font for each weight/style combination", async () => {
-    const doc = await PDFDocument.create();
-    const fonts = await embedTextFonts(doc, allVariants());
-
-    const regular = fonts.fontFor(false, false);
-    expect(fonts.fontFor(true, false)).not.toBe(regular);
-    expect(fonts.fontFor(false, true)).not.toBe(regular);
-    expect(fonts.fontFor(true, true)).not.toBe(fonts.fontFor(true, false));
-    expect(fonts.fontFor(false, false)).toBe(regular); // stable
-  });
-
-  it("falls back to regular for any variant that was not supplied", async () => {
-    const doc = await PDFDocument.create();
-    const fonts = await embedTextFonts(doc, { regular: fontBytes() });
-
-    const regular = fonts.fontFor(false, false);
-    expect(fonts.fontFor(true, false)).toBe(regular);
-    expect(fonts.fontFor(true, true)).toBe(regular);
-  });
-
-  it("falls back bold-italic to bold when only bold is supplied", async () => {
+  it("selects a distinct embedded font per family and per weight/style", async () => {
     const doc = await PDFDocument.create();
     const fonts = await embedTextFonts(doc, {
-      regular: fontBytes(),
-      bold: variant("NotoSans-Bold.ttf"),
+      sans: allVariants(),
+      serif: {
+        regular: variant("NotoSerif-Regular.ttf"),
+        bold: variant("NotoSerif-Bold.ttf"),
+      },
     });
 
-    expect(fonts.fontFor(true, true)).toBe(fonts.fontFor(true, false));
+    const sansRegular = fonts.fontFor("sans", false, false);
+    expect(fonts.fontFor("sans", true, false)).not.toBe(sansRegular);
+    expect(fonts.fontFor("sans", false, false)).toBe(sansRegular); // stable
+    expect(fonts.fontFor("serif", false, false)).not.toBe(sansRegular); // a different face
+    expect(fonts.fontFor("serif", true, false)).not.toBe(fonts.fontFor("serif", false, false));
+  });
+
+  it("falls back an absent family to sans", async () => {
+    const doc = await PDFDocument.create();
+    const fonts = await embedTextFonts(doc, { sans: { regular: fontBytes() } });
+
+    const sansRegular = fonts.fontFor("sans", false, false);
+    expect(fonts.fontFor("serif", false, false)).toBe(sansRegular);
+    expect(fonts.fontFor("mono", true, false)).toBe(sansRegular);
+  });
+
+  it("falls back a missing variant within a family", async () => {
+    const doc = await PDFDocument.create();
+    const fonts = await embedTextFonts(doc, {
+      sans: { regular: fontBytes(), bold: variant("NotoSans-Bold.ttf") },
+    });
+
+    expect(fonts.fontFor("sans", true, true)).toBe(fonts.fontFor("sans", true, false)); // bi -> bold
+    expect(fonts.fontFor("sans", false, true)).toBe(fonts.fontFor("sans", false, false)); // i -> regular
   });
 });

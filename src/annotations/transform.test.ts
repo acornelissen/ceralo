@@ -29,6 +29,7 @@ function box(): TextBox {
     italic: false,
     color: "#000000",
     align: "left",
+    family: "sans",
   };
 }
 

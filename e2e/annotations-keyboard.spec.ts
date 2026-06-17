@@ -72,6 +72,9 @@ test("the formatting toolbar appears on focus and applies formatting live", asyn
 
   await page.locator('.ttb-align[data-align="center"]').click();
   await expect(input).toHaveCSS("text-align", "center");
+
+  await page.locator(".ttb-family").selectOption("serif");
+  await expect(input).toHaveCSS("font-family", "serif");
 });
 
 test("the toolbar stays visible in the selected (not editing) state", async ({ page }) => {

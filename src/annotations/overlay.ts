@@ -39,6 +39,14 @@ export function textBoxInput(container: HTMLElement): HTMLTextAreaElement {
   return input;
 }
 
+// On screen we approximate each family with a generic CSS family; the saved PDF
+// embeds the real Noto face (see embedTextFonts).
+const FAMILY_CSS: Record<TextBox["family"], string> = {
+  sans: "sans-serif",
+  serif: "serif",
+  mono: "monospace",
+};
+
 /** Apply a box's formatting to its textarea (size scaled by the viewport). */
 export function applyTextBoxStyle(
   input: HTMLTextAreaElement,
@@ -50,6 +58,7 @@ export function applyTextBoxStyle(
   input.style.fontStyle = box.italic ? "italic" : "normal";
   input.style.color = box.color;
   input.style.textAlign = box.align;
+  input.style.fontFamily = FAMILY_CSS[box.family];
 }
 
 /**

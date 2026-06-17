@@ -18,6 +18,7 @@ function box(extra: Partial<TextBox> = {}): TextBox {
     italic: false,
     color: "#000000",
     align: "left",
+    family: "sans",
     ...extra,
   };
 }
@@ -58,6 +59,18 @@ describe("attachTextToolbar", () => {
     expect(changes.at(-1)!.align).toBe("right");
     expect(h.querySelector('[data-align="right"]')!.getAttribute("aria-pressed")).toBe("true");
     expect(h.querySelector('[data-align="left"]')!.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("reflects and changes the font family", () => {
+    const h = host();
+    const changes: TextBox[] = [];
+    attachTextToolbar(h, box({ family: "serif" }), (u) => changes.push(u));
+    const family = h.querySelector<HTMLSelectElement>(".ttb-family")!;
+    expect(family.value).toBe("serif");
+
+    family.value = "mono";
+    family.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(changes.at(-1)!.family).toBe("mono");
   });
 
   it("editing the size commits a number through onChange", () => {

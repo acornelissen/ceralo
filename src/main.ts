@@ -4,10 +4,16 @@
 // save it back (Rust save_pdf / save_pdf_as). The DocumentModel is the source of
 // truth for saving and the dirty flag; status and failures surface as toasts.
 import "./pdf/worker";
-import regularFontUrl from "./assets/fonts/NotoSans-Regular.ttf?url";
-import boldFontUrl from "./assets/fonts/NotoSans-Bold.ttf?url";
-import italicFontUrl from "./assets/fonts/NotoSans-Italic.ttf?url";
-import boldItalicFontUrl from "./assets/fonts/NotoSans-BoldItalic.ttf?url";
+import sansRegularUrl from "./assets/fonts/NotoSans-Regular.ttf?url";
+import sansBoldUrl from "./assets/fonts/NotoSans-Bold.ttf?url";
+import sansItalicUrl from "./assets/fonts/NotoSans-Italic.ttf?url";
+import sansBoldItalicUrl from "./assets/fonts/NotoSans-BoldItalic.ttf?url";
+import serifRegularUrl from "./assets/fonts/NotoSerif-Regular.ttf?url";
+import serifBoldUrl from "./assets/fonts/NotoSerif-Bold.ttf?url";
+import serifItalicUrl from "./assets/fonts/NotoSerif-Italic.ttf?url";
+import serifBoldItalicUrl from "./assets/fonts/NotoSerif-BoldItalic.ttf?url";
+import monoRegularUrl from "./assets/fonts/NotoSansMono-Regular.ttf?url";
+import monoBoldUrl from "./assets/fonts/NotoSansMono-Bold.ttf?url";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -91,31 +97,39 @@ import type { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 import "./pdf/textlayer.css";
 import "./pdf/textlayer.overrides.css"; // must load after textlayer.css to win
 import { isEncryptedPdf, saveModel, type SaveOptions } from "./save/save";
+import type { TextFontFamilies } from "./save/font";
 import { clampScale, fitToWidthScale, stepZoom, zoomByDelta } from "./pdf/zoom";
 
-// The Unicode text fonts (regular + bold/italic variants) are bundled assets
-// fetched from 'self' (CSP-safe) and cached: only needed when the model has text
-// annotations to draw on save. The keys match SaveOptions so they spread in.
-interface TextFontBytes {
-  fontBytes: Uint8Array;
-  boldFontBytes: Uint8Array;
-  italicFontBytes: Uint8Array;
-  boldItalicFontBytes: Uint8Array;
-}
-let fontBytesCache: TextFontBytes | null = null;
-async function loadFontBytes(): Promise<TextFontBytes> {
-  if (!fontBytesCache) {
+// The text fonts (sans/serif/mono, each with weight/style variants) are bundled
+// assets fetched from 'self' (CSP-safe) and cached: only needed when the model
+// has text annotations to draw on save. Shaped as SaveOptions.fonts.
+let fontFamiliesCache: TextFontFamilies | null = null;
+async function loadFontFamilies(): Promise<TextFontFamilies> {
+  if (!fontFamiliesCache) {
     const fetchBytes = async (url: string): Promise<Uint8Array> =>
       new Uint8Array(await (await fetch(url)).arrayBuffer());
-    const [fontBytes, boldFontBytes, italicFontBytes, boldItalicFontBytes] = await Promise.all([
-      fetchBytes(regularFontUrl),
-      fetchBytes(boldFontUrl),
-      fetchBytes(italicFontUrl),
-      fetchBytes(boldItalicFontUrl),
-    ]);
-    fontBytesCache = { fontBytes, boldFontBytes, italicFontBytes, boldItalicFontBytes };
+    const [sansR, sansB, sansI, sansBI, serifR, serifB, serifI, serifBI, monoR, monoB] =
+      await Promise.all(
+        [
+          sansRegularUrl,
+          sansBoldUrl,
+          sansItalicUrl,
+          sansBoldItalicUrl,
+          serifRegularUrl,
+          serifBoldUrl,
+          serifItalicUrl,
+          serifBoldItalicUrl,
+          monoRegularUrl,
+          monoBoldUrl,
+        ].map(fetchBytes),
+      );
+    fontFamiliesCache = {
+      sans: { regular: sansR!, bold: sansB!, italic: sansI!, boldItalic: sansBI! },
+      serif: { regular: serifR!, bold: serifB!, italic: serifI!, boldItalic: serifBI! },
+      mono: { regular: monoR!, bold: monoB! }, // mono has no italic; it falls back
+    };
   }
-  return fontBytesCache;
+  return fontFamiliesCache;
 }
 
 interface OpenedPdf {
@@ -1249,7 +1263,7 @@ async function projectBytes(
   const needsFont = model.annotations.some((a) => a.kind === "text");
   const options: SaveOptions = {
     ...extra,
-    ...(needsFont ? await loadFontBytes() : {}),
+    ...(needsFont ? { fonts: await loadFontFamilies() } : {}),
   };
   return saveModel(model, options);
 }

@@ -41,5 +41,6 @@ describe("createTextBoxAt", () => {
     expect(box.italic).toBe(false);
     expect(box.color).toBe("#000000");
     expect(box.align).toBe("left");
+    expect(box.family).toBe("sans");
   });
 });

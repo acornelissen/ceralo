@@ -72,6 +72,14 @@ function fontBytes(): Uint8Array {
   );
 }
 
+function serifBytes(weight: "Regular" | "Bold"): Uint8Array {
+  return new Uint8Array(
+    readFileSync(
+      fileURLToPath(new URL(`../assets/fonts/NotoSerif-${weight}.ttf`, import.meta.url)),
+    ),
+  );
+}
+
 /** Extract text items (with baseline position) from a saved page via pdf.js. */
 async function textItems(bytes: Uint8Array, pageNumber: number): Promise<PdfTextItem[]> {
   const doc = await loadPdfDocument(bytes);
@@ -170,9 +178,13 @@ describe("saveModel empty round-trip", () => {
       italic: false,
       color: "#000000",
       align: "left",
+      family: "sans",
     });
 
-    const items = await textItems(await saveModel(model, { fontBytes: fontBytes() }), 1);
+    const items = await textItems(
+      await saveModel(model, { fonts: { sans: { regular: fontBytes() } } }),
+      1,
+    );
 
     const joined = items.map((item) => item.str).join("");
     expect(joined).toContain("Hello kůň");
@@ -195,6 +207,7 @@ describe("saveModel empty round-trip", () => {
       italic: false,
       color: "#000000",
       align: "left",
+      family: "sans",
     });
     model = addAnnotation(model, {
       kind: "text",
@@ -208,9 +221,10 @@ describe("saveModel empty round-trip", () => {
       italic: false,
       color: "#000000",
       align: "left",
+      family: "sans",
     });
 
-    const saved = await saveModel(model, { fontBytes: fontBytes() });
+    const saved = await saveModel(model, { fonts: { sans: { regular: fontBytes() } } });
     const page1 = (await textItems(saved, 1)).map((i) => i.str).join("");
     const page2 = (await textItems(saved, 2)).map((i) => i.str).join("");
 
@@ -232,6 +246,7 @@ describe("saveModel empty round-trip", () => {
       bold: false,
       italic: false,
       color: "#000000",
+      family: "sans",
     } as const;
     const leftModel = addAnnotation(createModel(fixture("two-page.pdf")), {
       ...base,
@@ -243,14 +258,44 @@ describe("saveModel empty round-trip", () => {
     });
 
     const drawnX = async (model: typeof leftModel) =>
-      (await textItems(await saveModel(model, { fontBytes: fontBytes() }), 1)).find((i) =>
-        i.str.includes("Hi"),
-      )?.transform[4];
+      (
+        await textItems(await saveModel(model, { fonts: { sans: { regular: fontBytes() } } }), 1)
+      ).find((i) => i.str.includes("Hi"))?.transform[4];
 
     const leftX = await drawnX(leftModel);
     const rightX = await drawnX(rightModel);
     expect(leftX).toBeCloseTo(72, 0); // left edge at the origin
     expect(rightX).toBeGreaterThan(leftX!); // right alignment pushes it along x
+  });
+
+  it("draws a serif text box when the serif family is supplied", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "text",
+      page: 0,
+      origin: userSpacePoint(72, 700),
+      width: 220,
+      height: 24,
+      text: "Serif line",
+      fontSize: 14,
+      bold: true,
+      italic: false,
+      color: "#000000",
+      align: "left",
+      family: "serif",
+    });
+
+    const saved = await saveModel(model, {
+      fonts: {
+        sans: { regular: fontBytes() },
+        serif: {
+          regular: serifBytes("Regular"),
+          bold: serifBytes("Bold"),
+        },
+      },
+    });
+
+    expect((await textItems(saved, 1)).map((i) => i.str).join("")).toContain("Serif line");
   });
 });
 

@@ -1,4 +1,4 @@
-import type { TextAlign, TextBox } from "../model/document";
+import type { TextAlign, TextBox, TextFamily } from "../model/document";
 
 // A small floating formatting toolbar for a selected/editing text box: font
 // size, bold, italic, colour and alignment. It holds no state of its own — each
@@ -10,6 +10,12 @@ const ALIGNMENTS: readonly { value: TextAlign; label: string; glyph: string }[] 
   { value: "left", label: "Align left", glyph: "⤎" },
   { value: "center", label: "Align center", glyph: "↔" },
   { value: "right", label: "Align right", glyph: "⤏" },
+];
+
+const FAMILIES: readonly { value: TextFamily; label: string }[] = [
+  { value: "sans", label: "Sans" },
+  { value: "serif", label: "Serif" },
+  { value: "mono", label: "Mono" },
 ];
 
 const FONT_SIZE_MIN = 4;
@@ -45,6 +51,16 @@ export function attachTextToolbar(
   // placement or clear selection); the controls handle their own events.
   toolbar.addEventListener("pointerdown", (event) => event.stopPropagation());
 
+  const family = document.createElement("select");
+  family.className = "ttb-family";
+  family.setAttribute("aria-label", "Font family");
+  for (const f of FAMILIES) {
+    const option = document.createElement("option");
+    option.value = f.value;
+    option.textContent = f.label;
+    family.appendChild(option);
+  }
+
   const size = document.createElement("input");
   size.type = "number";
   size.className = "ttb-size";
@@ -67,6 +83,7 @@ export function attachTextToolbar(
     return button;
   });
 
+  family.addEventListener("change", () => emit({ ...current, family: family.value as TextFamily }));
   bold.addEventListener("click", () => emit({ ...current, bold: !current.bold }));
   italic.addEventListener("click", () => emit({ ...current, italic: !current.italic }));
   color.addEventListener("input", () => emit({ ...current, color: color.value }));
@@ -79,10 +96,11 @@ export function attachTextToolbar(
     }
   });
 
-  toolbar.append(size, bold, italic, color, ...alignButtons);
+  toolbar.append(family, size, bold, italic, color, ...alignButtons);
   host.appendChild(toolbar);
 
   function reflect(b: TextBox): void {
+    family.value = b.family;
     size.value = String(b.fontSize);
     bold.setAttribute("aria-pressed", String(b.bold));
     italic.setAttribute("aria-pressed", String(b.italic));

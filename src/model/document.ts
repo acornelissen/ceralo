@@ -15,6 +15,9 @@ export interface FieldValue {
 /** Horizontal alignment of a text box's lines within its width. */
 export type TextAlign = "left" | "center" | "right";
 
+/** Font family of a text box; each maps to a bundled, embeddable face. */
+export type TextFamily = "sans" | "serif" | "mono";
+
 /** A free-text annotation the user added. */
 export interface TextBox {
   readonly kind: "text";
@@ -29,6 +32,7 @@ export interface TextBox {
   readonly italic: boolean;
   readonly color: string; // "#rrggbb"
   readonly align: TextAlign;
+  readonly family: TextFamily;
 }
 
 /** A placed signature image. */

@@ -107,6 +107,7 @@ describe("annotation mutations", () => {
     italic: false,
     color: "#000000",
     align: "left",
+    family: "sans",
   };
 
   it("adds an annotation with a generated id and marks dirty", () => {

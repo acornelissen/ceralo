@@ -10,18 +10,15 @@ import {
   type PDFPage,
 } from "pdf-lib";
 import type { DocumentModel, FieldValue, SignatureStamp, TextBox } from "../model/document";
-import { embedTextFonts, type EmbeddedTextFonts } from "./font";
+import { embedTextFonts, type EmbeddedTextFonts, type TextFontFamilies } from "./font";
 
 /** Inputs the projection needs from outside the pure model (e.g. font bytes). */
 export interface SaveOptions {
   /**
-   * Bytes of the regular Unicode text font, required only when text boxes are
-   * present. The bold/italic variants are optional; missing ones fall back.
+   * Per-family font bytes, required only when text boxes are present. `sans`
+   * must be provided; other families and variants fall back. See embedTextFonts.
    */
-  readonly fontBytes?: Uint8Array;
-  readonly boldFontBytes?: Uint8Array;
-  readonly italicFontBytes?: Uint8Array;
-  readonly boldItalicFontBytes?: Uint8Array;
+  readonly fonts?: TextFontFamilies;
   /**
    * Bake filled form fields into static page content with no editable layer.
    * Annotations are already drawn content, so this only affects AcroForm fields.
@@ -113,7 +110,7 @@ function drawTextBox(page: PDFPage, fonts: EmbeddedTextFonts, box: TextBox): voi
   if (box.text.length === 0) {
     return;
   }
-  const font = fonts.fontFor(box.bold, box.italic);
+  const font = fonts.fontFor(box.family, box.bold, box.italic);
   const { r, g, b } = hexToRgb(box.color);
   const color = rgb(r, g, b);
   const lineHeight = box.fontSize * LINE_HEIGHT_FACTOR;
@@ -191,15 +188,10 @@ export async function saveModel(
 
   const textBoxes = model.annotations.filter((a): a is TextBox => a.kind === "text");
   if (textBoxes.length > 0) {
-    if (!options.fontBytes) {
-      throw new Error("saveModel: fontBytes are required to draw text annotations");
+    if (!options.fonts) {
+      throw new Error("saveModel: fonts are required to draw text annotations");
     }
-    const fonts = await embedTextFonts(doc, {
-      regular: options.fontBytes,
-      bold: options.boldFontBytes,
-      italic: options.italicFontBytes,
-      boldItalic: options.boldItalicFontBytes,
-    });
+    const fonts = await embedTextFonts(doc, options.fonts);
     for (const box of textBoxes) {
       const page = pages[box.page];
       if (page) {

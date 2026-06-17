@@ -45,5 +45,6 @@ export function createTextBoxAt(
     italic: false,
     color: "#000000",
     align: "left",
+    family: "sans",
   });
 }
