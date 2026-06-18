@@ -5,6 +5,19 @@ All notable changes to SignetPDF are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-06-18
+
+### Added
+
+- New app icon: a gold signet seal with a pen nib on the brand blue.
+
+### Changed
+
+- Release builds: the macOS bundle is now a universal binary, so it runs on both
+  Intel and Apple Silicon Macs (0.4.0 was Apple Silicon only).
+- Documented how to install the unsigned binaries (per-OS steps for clearing the
+  first-launch Gatekeeper/SmartScreen warning) in the README and release notes.
+
 ## [0.4.0] - 2026-06-18
 
 ### Added
@@ -82,6 +95,7 @@ Initial release — the walking skeleton through milestone M5.
 - Native file I/O via Rust commands (open, save, save as) with a path-grant
   allowlist.
 
+[0.4.1]: https://github.com/acornelissen/signetpdf/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/acornelissen/signetpdf/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/acornelissen/signetpdf/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/acornelissen/signetpdf/compare/v0.1.0...v0.2.0
