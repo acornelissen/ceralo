@@ -494,10 +494,9 @@ function scrollToCurrentMatch(viewer: Viewer): void {
   }
   let target: Element = page.container;
   if (viewer.textLayers.has(cur.page)) {
-    const { spans } = pageSpans(page);
+    const { spans, texts } = pageSpans(page);
     const ordinal = currentOrdinal(viewer, cur.page);
-    const span =
-      spans[matchRanges(pageSpans(page).texts, viewer.search.query)[ordinal]?.startItem ?? -1];
+    const span = spans[matchRanges(texts, viewer.search.query)[ordinal]?.startItem ?? -1];
     target = span ?? page.container;
   }
   target.scrollIntoView({ block: "center", behavior: "smooth" });
