@@ -213,6 +213,11 @@ function emptySearch(): SearchState {
 function applyEdit(viewer: Viewer, next: DocumentModel): void {
   viewer.model = next;
   viewer.history = viewer.history ? record(viewer.history, next) : createHistory(next);
+  // Every commit routes through here, including those that don't re-render
+  // (text typing, keyboard nudge, toolbar changes, form fields), so refresh the
+  // dirty badge and undo/redo state here rather than at each call site.
+  updateHistoryButtons(viewer);
+  updateSaveDirty(viewer);
 }
 
 // Signature pad size (CSS px); the placed stamp keeps this aspect ratio.
