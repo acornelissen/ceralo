@@ -8,6 +8,11 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      # @types/node tracks the pinned Node runtime (see mise.toml); bump it
+      # together with the runtime, not ahead of it.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   # Rust crates for the Tauri backend.
   - package-ecosystem: "cargo"

@@ -33,7 +33,7 @@ jobs:
             build-mode: autobuild
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       # Rust analysis builds the Tauri crate, which needs the same system
       # libraries and toolchain as CI, plus the built frontend so tauri-build's
