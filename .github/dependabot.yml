@@ -13,6 +13,10 @@ updates:
       # together with the runtime, not ahead of it.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # TypeScript major upgrades are deliberate (tsconfig/type changes); the
+      # 6.0 auto-PR broke the build. Upgrade it manually, not via Dependabot.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # Rust crates for the Tauri backend.
   - package-ecosystem: "cargo"
