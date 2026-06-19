@@ -107,10 +107,11 @@ App Store Connect — unaccepted agreements make notarization fail with an
 unhelpful error. The notary service is asynchronous and the release job may sit
 on the notarization step for several minutes; that is normal.
 
-## Windows signing (planned via SignPath Foundation)
+## Windows signing (deferred — SignPath Foundation when eligible)
 
-Windows builds ship **unsigned** until a certificate is in place. The macOS
-approach (base64 a cert into a secret) does not transfer to Windows: since June
+Windows builds ship **unsigned** for now, and this is deferred on purpose. The
+macOS approach (base64 a cert into a secret) does not transfer to Windows: since
+June
 2023 the CA/Browser Forum requires code-signing private keys to live on certified
 hardware (a FIPS 140-2 USB token / HSM) or a cloud signing service, so CAs no
 longer issue an exportable `.pfx`. A USB token can't be attached to a hosted
@@ -124,10 +125,16 @@ CI). Ceralo became eligible when the Commons Clause was dropped — the
 Foundation requires an OSI-approved open-source licence, which plain Apache-2.0
 is and Apache-2.0 + Commons Clause was not.
 
-Remaining steps before Windows is signed:
+**Why deferred:** the Foundation weighs project maturity — an established public
+repo, real release history, a named maintainer, and some user base. Ceralo is new
+under this name, so it is unlikely to qualify yet. The plan is to let the project
+build a track record first, then apply. The licence side is already settled
+(plain Apache-2.0 is OSI-approved; Apache-2.0 + Commons Clause was not), so the
+only thing gating an application is reputation.
 
-1. Apply to the SignPath Foundation for an open-source code-signing certificate
-   (they also weigh project maturity, a public repo, and a named maintainer).
+When the project is ready to apply:
+
+1. Apply to the SignPath Foundation for an open-source code-signing certificate.
 2. Once approved, wire the SignPath GitHub Action into `release.yml` as a signing
    step for the Windows artifacts, with the SignPath API token and project slugs
    stored as repository secrets.
