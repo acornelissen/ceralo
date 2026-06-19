@@ -88,6 +88,7 @@ import {
 import { bindMarkupDelete, buildMarkupControl } from "./annotations/markupOverlay";
 import { bindNoteControl, bindNoteDelete, buildNoteControl } from "./annotations/noteOverlay";
 import { createNoteAt } from "./annotations/note";
+import { bindShapeDelete, buildShapeControl } from "./annotations/shapeOverlay";
 import { attachTextToolbar } from "./annotations/toolbar";
 import type { SnapBox } from "./annotations/transform";
 import { listFormFields, type FormField } from "./forms/fields";
@@ -790,6 +791,19 @@ function placeNotes(viewer: Viewer, page: RenderedPage, geometry: PageGeometry):
   }
 }
 
+/** Paint the page's drawn shapes (rectangle/ellipse/line/arrow). */
+function placeShapes(viewer: Viewer, page: RenderedPage, geometry: PageGeometry): void {
+  const viewport = { scale: viewer.scale };
+  for (const annotation of viewer.model?.annotations ?? []) {
+    if (annotation.kind !== "shape" || annotation.page !== page.index) {
+      continue;
+    }
+    const control = buildShapeControl(annotation, geometry, viewport);
+    bindShapeDelete(control, annotation, (id) => deleteAnnotation(viewer, id));
+    page.overlay.appendChild(control);
+  }
+}
+
 /** Paint the page's text-markup annotations (highlight/underline/strikethrough). */
 function placeMarkups(viewer: Viewer, page: RenderedPage, geometry: PageGeometry): void {
   const viewport = { scale: viewer.scale };
@@ -970,6 +984,7 @@ async function mountPage(
   placeTextBoxes(viewer, page, geometry);
   placeStamps(viewer, page, geometry);
   placeMarkups(viewer, page, geometry);
+  placeShapes(viewer, page, geometry);
   placeNotes(viewer, page, geometry);
 
   // Selection is a non-critical enhancement: render the text layer after the

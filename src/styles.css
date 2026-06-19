@@ -909,6 +909,55 @@ body.drag-over::after {
   outline-offset: 1px;
 }
 
+/* Drawn shape: an SVG over the page. The container box does not catch clicks
+   (so empty interior passes through to selection), but the painted stroke/fill
+   do, and the delete button is reachable on hover/focus. */
+.overlay .shape {
+  position: absolute;
+  pointer-events: none;
+}
+
+.overlay .shape-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+/* The drawn geometry catches pointer events; the transparent interior does not. */
+.overlay .shape-svg > * {
+  pointer-events: visiblePainted;
+}
+
+.overlay .shape-delete {
+  position: absolute;
+  top: -14px;
+  right: -1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--danger);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: var(--danger);
+  color: var(--on-accent);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.4;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: opacity 120ms ease;
+}
+
+.overlay .shape-delete:hover,
+.overlay .shape-delete:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Sticky note: a fixed-size pin at the anchor with a comment popup. The pin
    stays a constant size at any zoom; the popup opens above it on click/focus. */
 .overlay .note {
