@@ -43,17 +43,17 @@ const GROUPS: DockGroup[] = [
   },
 ];
 
-/** The default markup colour: a soft highlighter yellow. */
+/** The default markup colour: a highlighter yellow. */
 export const DEFAULT_MARKUP_COLOR = "#ffeb3b";
 
-/** The default shape stroke colour. */
-export const DEFAULT_SHAPE_COLOR = "#cc0000";
+/** The default shape stroke colour: a very dark grey. */
+export const DEFAULT_SHAPE_COLOR = "#2b2b2b";
 
-/** The default fill colour offered when fill is turned on. */
-export const DEFAULT_SHAPE_FILL = "#ffe08a";
+/** The default fill colour offered when fill is turned on: light blue. */
+export const DEFAULT_SHAPE_FILL = "#add8e6";
 
-/** The default freehand-ink colour. */
-export const DEFAULT_INK_COLOR = "#1144ff";
+/** The default freehand-ink colour: red. */
+export const DEFAULT_INK_COLOR = "#cc0000";
 
 /**
  * The draw group: a freehand pen toggle and an ink-colour swatch (same swatch +
@@ -388,7 +388,7 @@ export function buildDock(platform: Platform): HTMLElement {
     makeDisclosure(
       "draw-menu",
       "Drawing & annotation",
-      "pen",
+      "shapes",
       "draw-panel",
       makeDrawingPanelContent(platform),
     ),
