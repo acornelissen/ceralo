@@ -55,6 +55,20 @@ test("a note's comment can be typed, then re-read after reopening the popup", as
   await expect(note.locator(".note-text")).toHaveValue("verify the totals");
 });
 
+test("dragging the pin moves the note without opening the popup", async ({ page }) => {
+  await dropNote(page);
+  const note = page.locator(".overlay .note");
+  const pin = note.locator(".note-icon");
+  const before = (await pin.boundingBox())!;
+  await pin.hover();
+  await page.mouse.down();
+  await page.mouse.move(before.x + 90, before.y + 70, { steps: 8 });
+  await page.mouse.up();
+  const after = (await pin.boundingBox())!;
+  expect(after.x).toBeGreaterThan(before.x + 40);
+  await expect(note).not.toHaveClass(/open/); // a drag, not a toggle
+});
+
 test("a note can be deleted from its popup", async ({ page }) => {
   await dropNote(page);
   await expect(page.locator(".overlay .note")).toHaveCount(1);

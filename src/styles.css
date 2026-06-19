@@ -985,6 +985,33 @@ body.drag-over::after {
 /* The drawn geometry catches pointer events; the transparent interior does not. */
 .overlay .shape-svg > * {
   pointer-events: visiblePainted;
+  cursor: move;
+}
+
+/* Resize handles at the shape's two defining points. */
+.overlay .shape-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px; /* centre on the point */
+  border: 1px solid var(--accent-strong);
+  border-radius: 2px;
+  background: var(--surface);
+  pointer-events: auto;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+/* Reveal the handles on hover/focus of the shape, like the delete affordance. */
+.overlay .shape:hover .shape-handle,
+.overlay .shape-handle:focus-visible {
+  opacity: 1;
+}
+
+/* The preview shown while dragging out a shape has no handles. */
+.overlay .shape-preview .shape-handle {
+  display: none;
 }
 
 .overlay .shape-delete {

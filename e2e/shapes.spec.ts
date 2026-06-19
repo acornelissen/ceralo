@@ -67,6 +67,34 @@ test("a drawn shape can be deleted", async ({ page }) => {
   await expect(page.locator(".overlay .shape")).toHaveCount(0);
 });
 
+test("a drawn shape can be moved by dragging its body", async ({ page }) => {
+  await drawShape(page, "#shape-rectangle");
+  const rect = page.locator(".overlay .shape.shape-rectangle");
+  const before = (await rect.boundingBox())!;
+  // Drag the stroke (top edge of the rect) sideways.
+  await page.mouse.move(before.x + before.width / 2, before.y + 1);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width / 2 + 60, before.y + 41, { steps: 10 });
+  await page.mouse.up();
+  const after = (await rect.boundingBox())!;
+  expect(after.x).toBeGreaterThan(before.x + 30);
+  expect(after.y).toBeGreaterThan(before.y + 20);
+});
+
+test("a drawn shape can be resized by dragging a handle", async ({ page }) => {
+  await drawShape(page, "#shape-rectangle");
+  const rect = page.locator(".overlay .shape.shape-rectangle");
+  const before = (await rect.boundingBox())!;
+  const handle = rect.locator('.shape-handle[data-end="end"]');
+  const h = (await handle.boundingBox())!;
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(h.x + 80, h.y + 60, { steps: 10 });
+  await page.mouse.up();
+  const after = (await rect.boundingBox())!;
+  expect(after.width).toBeGreaterThan(before.width + 30);
+});
+
 test("a tiny click (no drag) does not create a shape", async ({ page }) => {
   await page.locator("#shape-rectangle").click();
   const box = (await page.locator(".overlay").first().boundingBox())!;

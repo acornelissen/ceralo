@@ -1,6 +1,8 @@
 import { modelToScreen, type Viewport } from "../model/coords";
 import type { PageGeometry, Shape } from "../model/document";
 import { positionElement as position } from "../overlay/position";
+import { onHandleDrag } from "./drag";
+import { moveShape, resizeShapeEnd } from "./move";
 import type { ScreenRect } from "./transform";
 
 // The shape overlay: an SVG drawing of a shape over the rendered page. Like the
@@ -127,6 +129,18 @@ export function buildShapeControl(
   drawInto(root, shape, geo, strokeWidth);
   container.appendChild(root);
 
+  // Two resize handles at the shape's defining points (corners for rect/ellipse,
+  // endpoints for line/arrow). Dragging one moves just that point.
+  for (const which of ["start", "end"] as const) {
+    const point = geo[which];
+    const handle = document.createElement("div");
+    handle.className = "shape-handle";
+    handle.dataset.end = which;
+    handle.style.left = `${point.x}px`;
+    handle.style.top = `${point.y}px`;
+    container.appendChild(handle);
+  }
+
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "shape-delete";
@@ -145,4 +159,65 @@ export function bindShapeDelete(
 ): void {
   const button = container.querySelector<HTMLButtonElement>(".shape-delete");
   button?.addEventListener("click", () => onDelete(shape.id));
+}
+
+/**
+ * Wire dragging the shape body to move it. The container follows the pointer for
+ * live feedback; the committed move (both endpoints in user space) is computed
+ * through the seam and pushed to the model on pointer-up.
+ */
+export function bindShapeDrag(
+  container: HTMLElement,
+  shape: Shape,
+  page: PageGeometry,
+  viewport: Viewport,
+  onMove: (updated: Shape) => void,
+): void {
+  const body = container.querySelector<SVGElement>(".shape-svg");
+  if (!body) {
+    return;
+  }
+  onHandleDrag(
+    body as unknown as HTMLElement,
+    () => {},
+    (dx, dy) => {
+      container.style.transform = `translate(${dx}px, ${dy}px)`;
+    },
+    (from, to) => {
+      container.style.transform = "";
+      onMove(moveShape(shape, from, to, page, viewport));
+    },
+  );
+}
+
+/**
+ * Wire the two handles so dragging one resizes the shape by moving that endpoint.
+ * The committed endpoint (user space) is computed through the seam on pointer-up.
+ */
+export function bindShapeResize(
+  container: HTMLElement,
+  shape: Shape,
+  page: PageGeometry,
+  viewport: Viewport,
+  onResize: (updated: Shape) => void,
+): void {
+  for (const handle of container.querySelectorAll<HTMLElement>(".shape-handle")) {
+    const which = handle.dataset.end === "start" ? "start" : "end";
+    let originLeft = 0;
+    let originTop = 0;
+    onHandleDrag(
+      handle,
+      () => {
+        originLeft = Number.parseFloat(handle.style.left) || 0;
+        originTop = Number.parseFloat(handle.style.top) || 0;
+      },
+      (dx, dy) => {
+        handle.style.left = `${originLeft + dx}px`;
+        handle.style.top = `${originTop + dy}px`;
+      },
+      (from, to) => {
+        onResize(resizeShapeEnd(shape, which, from, to, page, viewport));
+      },
+    );
+  }
 }

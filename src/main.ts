@@ -92,9 +92,19 @@ import {
   textBoxInput,
 } from "./annotations/overlay";
 import { bindMarkupDelete, buildMarkupControl } from "./annotations/markupOverlay";
-import { bindNoteControl, bindNoteDelete, buildNoteControl } from "./annotations/noteOverlay";
+import {
+  bindNoteControl,
+  bindNoteDelete,
+  bindNoteDrag,
+  buildNoteControl,
+} from "./annotations/noteOverlay";
 import { createNoteAt } from "./annotations/note";
-import { bindShapeDelete, buildShapeControl } from "./annotations/shapeOverlay";
+import {
+  bindShapeDelete,
+  bindShapeDrag,
+  bindShapeResize,
+  buildShapeControl,
+} from "./annotations/shapeOverlay";
 import { createShapeFromDrag } from "./annotations/shape";
 import { bindInkDelete, buildInkControl } from "./annotations/inkOverlay";
 import { createInkFromPath } from "./annotations/ink";
@@ -852,6 +862,12 @@ function placeNotes(viewer: Viewer, page: RenderedPage, geometry: PageGeometry):
       }
     });
     bindNoteDelete(control, annotation, (id) => deleteAnnotation(viewer, id));
+    bindNoteDrag(control, annotation, geometry, viewport, (updated) => {
+      if (viewer.model) {
+        applyEdit(viewer, updateAnnotation(viewer.model, updated));
+        void rerender(viewer);
+      }
+    });
     page.overlay.appendChild(control);
     // A just-dropped note opens its popup so the comment can be typed at once.
     if (annotation.id === viewer.focusAnnotationId) {
@@ -872,6 +888,14 @@ function placeShapes(viewer: Viewer, page: RenderedPage, geometry: PageGeometry)
     }
     const control = buildShapeControl(annotation, geometry, viewport);
     bindShapeDelete(control, annotation, (id) => deleteAnnotation(viewer, id));
+    const commit = (updated: Shape): void => {
+      if (viewer.model) {
+        applyEdit(viewer, updateAnnotation(viewer.model, updated));
+        void rerender(viewer);
+      }
+    };
+    bindShapeDrag(control, annotation, geometry, viewport, commit);
+    bindShapeResize(control, annotation, geometry, viewport, commit);
     page.overlay.appendChild(control);
   }
 }

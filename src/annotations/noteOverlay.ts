@@ -1,6 +1,8 @@
 import { modelToScreen, type Viewport } from "../model/coords";
 import type { PageGeometry, StickyNote } from "../model/document";
+import { screenPoint } from "../model/geometry";
 import { icon } from "../app/icons";
+import { moveNote } from "./move";
 
 // The sticky-note overlay: a fixed-size pin at the note's anchor with a popup
 // that shows and edits the comment. Like the other overlays it holds no state —
@@ -101,6 +103,79 @@ export function bindNoteControl(
       onCommit({ ...note, text: input.value });
     }
   });
+}
+
+/** Travel (screen px) before a press on the pin counts as a drag, not a click. */
+const NOTE_DRAG_THRESHOLD = 3;
+
+/**
+ * Wire the pin so dragging it moves the note. The container follows the pointer
+ * for live feedback; the committed move (anchor in user space) is computed through
+ * the seam and pushed to the model on pointer-up. A genuine drag suppresses the
+ * pin's click so the popup does not toggle as a side effect.
+ */
+export function bindNoteDrag(
+  container: HTMLElement,
+  note: StickyNote,
+  page: PageGeometry,
+  viewport: Viewport,
+  onMove: (updated: StickyNote) => void,
+): void {
+  const pin = container.querySelector<HTMLElement>(".note-icon");
+  if (!pin) {
+    return;
+  }
+  let dragged = false;
+
+  pin.addEventListener("pointerdown", (event) => {
+    const startX = event.clientX;
+    const startY = event.clientY;
+    dragged = false;
+
+    const onPointerMove = (move: PointerEvent): void => {
+      const dx = move.clientX - startX;
+      const dy = move.clientY - startY;
+      if (!dragged && Math.hypot(dx, dy) < NOTE_DRAG_THRESHOLD) {
+        return;
+      }
+      dragged = true;
+      container.style.transform = `translate(${dx}px, ${dy}px)`;
+    };
+
+    const onPointerUp = (up: PointerEvent): void => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      if (!dragged) {
+        return; // a click: leave the popup toggle to the pin's click handler
+      }
+      container.style.transform = "";
+      onMove(
+        moveNote(
+          note,
+          screenPoint(startX, startY),
+          screenPoint(up.clientX, up.clientY),
+          page,
+          viewport,
+        ),
+      );
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  });
+
+  // Cancel the click that follows a drag so the popup does not toggle.
+  pin.addEventListener(
+    "click",
+    (event) => {
+      if (dragged) {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        dragged = false;
+      }
+    },
+    true,
+  );
 }
 
 /** Wire the delete button so clicking it removes this note from the model. */
