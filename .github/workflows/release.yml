@@ -3,8 +3,11 @@ name: Release
 # Build installable artefacts for Linux, macOS and Windows when a version tag is
 # pushed, and attach them to a draft GitHub release for review before publishing
 # (see RELEASING.md). The macOS build is universal (Intel + Apple Silicon).
-# Binaries are unsigned and unnotarized — Gatekeeper/SmartScreen will warn (see
-# KNOWN_ISSUES.md); signing and notarization are tracked separately.
+#
+# macOS is signed with a Developer ID Application certificate and notarized with
+# an App Store Connect API key when the signing secrets are present; without them
+# the build still runs but produces an unsigned bundle. Windows is still unsigned
+# (SmartScreen warns; tracked separately). See KNOWN_ISSUES.md.
 on:
   push:
     tags: ["v*"]
@@ -64,10 +67,30 @@ jobs:
 
       - run: npm ci
 
+      # Materialise the App Store Connect API key (.p8) for notarization. The
+      # bundler wants a file path, so decode the base64 secret to a temp file.
+      # A no-op (empty file) when the secret is unset; the build then stays
+      # unsigned/un-notarized rather than failing.
+      - name: Write the App Store Connect API key (macOS)
+        if: matrix.os == 'macos-latest'
+        run: echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/apple-api-key.p8"
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+
       - name: Build and bundle, attach to a draft release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS code signing (Developer ID Application). Empty on Linux/Windows
+          # and when the secrets are unset, in which case the bundle is unsigned.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # macOS notarization via an App Store Connect API key. APPLE_API_KEY is
+          # the Key ID; APPLE_API_KEY_PATH is the .p8 written in the step above.
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/apple-api-key.p8
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "SignetPDF ${{ github.ref_name }}"
