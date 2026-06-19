@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createModel } from "../model/document";
 import type { PageGeometry } from "../model/document";
-import { createMarkupFromRects, rectsToQuads } from "./markup";
+import { createMarkupFromRects, markupSelection, rectsToQuads } from "./markup";
 
 const page: PageGeometry = { index: 0, width: 612, height: 792, rotation: 0 };
 const viewport = { scale: 1 };
@@ -90,5 +90,59 @@ describe("createMarkupFromRects", () => {
     );
     expect(model).toBe(base);
     expect(model.dirty).toBe(false);
+  });
+});
+
+describe("markupSelection", () => {
+  const page1: PageGeometry = { index: 0, width: 612, height: 792, rotation: 0 };
+  const page2: PageGeometry = { index: 1, width: 612, height: 792, rotation: 0 };
+  // Two page overlays stacked vertically in screen space.
+  const targets = [
+    { geometry: page1, bounds: { left: 0, top: 0, width: 612, height: 792 } },
+    { geometry: page2, bounds: { left: 0, top: 800, width: 612, height: 792 } },
+  ];
+
+  it("creates a markup per page a selection rect falls on", () => {
+    const rects = [
+      { left: 72, top: 92, right: 192, bottom: 104 }, // page 1
+      { left: 72, top: 892, right: 150, bottom: 904 }, // page 2 (top 800 + 92)
+    ];
+    const model = markupSelection(
+      createModel(new Uint8Array([0x25])),
+      "highlight",
+      "#ffeb3b",
+      rects,
+      targets,
+      viewport,
+    );
+    expect(model.annotations).toHaveLength(2);
+    expect(model.annotations.map((a) => a.page).sort()).toEqual([0, 1]);
+  });
+
+  it("assigns each rect to the page its centre lies within", () => {
+    const rects = [{ left: 72, top: 92, right: 192, bottom: 104 }]; // page 1 only
+    const model = markupSelection(
+      createModel(new Uint8Array([0x25])),
+      "underline",
+      "#000000",
+      rects,
+      targets,
+      viewport,
+    );
+    expect(model.annotations).toHaveLength(1);
+    expect(model.annotations[0]?.page).toBe(0);
+  });
+
+  it("returns the model unchanged when the selection misses every page", () => {
+    const base = createModel(new Uint8Array([0x25]));
+    const model = markupSelection(
+      base,
+      "highlight",
+      "#ffeb3b",
+      [{ left: 5000, top: 5000, right: 5100, bottom: 5012 }],
+      targets,
+      viewport,
+    );
+    expect(model).toBe(base);
   });
 });

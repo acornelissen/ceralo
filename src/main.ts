@@ -49,7 +49,9 @@ import {
   type ContextTarget,
   type MenuActionKey,
 } from "./app/contextmenu";
-import { buildDock } from "./app/dock";
+import { buildDock, DEFAULT_MARKUP_COLOR } from "./app/dock";
+import { markupSelection, type MarkupTargetPage } from "./annotations/markup";
+import type { MarkupStyle } from "./model/document";
 import { icon, type IconName } from "./app/icons";
 import { createToasts, type Toasts, type ToastVariant } from "./app/toast";
 import { createTextBoxAt } from "./annotations/text";
@@ -174,6 +176,12 @@ interface Viewer {
   textTool: boolean;
   // When a signature is armed, clicking a page places it as a stamp.
   pendingStamp: StampImage | null;
+  // The colour the next markup (highlight/underline/strikethrough) is drawn in.
+  markupColor: string;
+  // The most recent non-empty text selection, captured so a dock-button click
+  // can mark it up even after the click moves focus (WKWebView clears the live
+  // selection when focus shifts during a mouse event).
+  markupRange: Range | null;
   // Id of a just-created box to focus after the next re-render.
   focusAnnotationId: string | null;
   // Undo/redo stack of model snapshots; present mirrors `model`.
@@ -245,6 +253,54 @@ function showDocumentChrome(viewer: Viewer, hasDocument: boolean): void {
 function updateSaveDirty(viewer: Viewer): void {
   const save = document.querySelector<HTMLButtonElement>("#save");
   save?.setAttribute("data-dirty", String(viewer.model?.dirty ?? false));
+}
+
+/**
+ * Wire the markup tools: the three style buttons mark up the current selection,
+ * and the colour swatch opens a native colour picker. A document `selectionchange`
+ * listener captures the last non-empty selection so a button click can still mark
+ * it up after the click moves focus (WKWebView clears the live selection when
+ * focus shifts during a mouse event). The buttons cancel the focus shift on
+ * pointer-down so the visible selection stays painted while they apply on click.
+ */
+function setupMarkupTools(viewer: Viewer): void {
+  const styles: ReadonlyArray<{ id: string; style: MarkupStyle }> = [
+    { id: "#markup-highlight", style: "highlight" },
+    { id: "#markup-underline", style: "underline" },
+    { id: "#markup-strikethrough", style: "strikethrough" },
+  ];
+  for (const { id, style } of styles) {
+    const button = document.querySelector<HTMLButtonElement>(id);
+    button?.addEventListener("pointerdown", (event) => event.preventDefault());
+    button?.addEventListener("click", () => applyMarkup(viewer, style));
+  }
+
+  const swatch = document.querySelector<HTMLButtonElement>("#markup-color");
+  const colorInput = document.querySelector<HTMLInputElement>("#markup-color-input");
+  swatch?.addEventListener("click", () => colorInput?.click());
+  colorInput?.addEventListener("input", () => {
+    if (!colorInput.value) {
+      return;
+    }
+    viewer.markupColor = colorInput.value;
+    swatch?.style.setProperty("--markup-color", colorInput.value);
+  });
+
+  document.addEventListener("selectionchange", () => {
+    const selection = window.getSelection();
+    if (
+      !selection ||
+      selection.isCollapsed ||
+      selection.rangeCount === 0 ||
+      selection.toString().trim() === ""
+    ) {
+      return; // keep the last non-empty range; a button click collapses it
+    }
+    const range = selection.getRangeAt(0);
+    if (viewer.mount.contains(range.commonAncestorContainer)) {
+      viewer.markupRange = range.cloneRange();
+    }
+  });
 }
 
 /**
@@ -1115,6 +1171,83 @@ function cancelTools(viewer: Viewer): void {
   viewer.toasts?.clear();
 }
 
+/** The selection to mark up: the live one if present, else the last captured. */
+function activeMarkupRange(viewer: Viewer): Range | null {
+  const selection = window.getSelection();
+  if (
+    selection &&
+    !selection.isCollapsed &&
+    selection.rangeCount > 0 &&
+    selection.toString().trim() !== ""
+  ) {
+    return selection.getRangeAt(0);
+  }
+  return viewer.markupRange;
+}
+
+/** Drop the current text selection and the captured markup range. */
+function clearMarkupSelection(viewer: Viewer): void {
+  window.getSelection()?.removeAllRanges();
+  viewer.markupRange = null;
+}
+
+/** Each live page paired with its on-screen bounds, for routing selection rects. */
+function markupTargets(viewer: Viewer): MarkupTargetPage[] {
+  const targets: MarkupTargetPage[] = [];
+  for (const page of viewer.pages) {
+    const geometry = viewer.model?.pages[page.index];
+    if (!geometry) {
+      continue;
+    }
+    const bounds = page.overlay.getBoundingClientRect();
+    targets.push({
+      geometry,
+      bounds: { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height },
+    });
+  }
+  return targets;
+}
+
+/**
+ * Mark up the current text selection in the given style, using the current
+ * markup colour. The selection's client rects map to user-space quads per page
+ * through the seam; the new markup(s) commit to the model and the selection is
+ * cleared. A collapsed or off-page selection is a no-op with a hint.
+ */
+function applyMarkup(viewer: Viewer, style: MarkupStyle): void {
+  if (!viewer.model) {
+    return;
+  }
+  const range = activeMarkupRange(viewer);
+  const rects = range
+    ? Array.from(range.getClientRects()).map((r) => ({
+        left: r.left,
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+      }))
+    : [];
+  if (rects.length === 0) {
+    notify(viewer, "Select some text first, then choose a markup.", "info");
+    return;
+  }
+  const next = markupSelection(
+    viewer.model,
+    style,
+    viewer.markupColor,
+    rects,
+    markupTargets(viewer),
+    { scale: viewer.scale },
+  );
+  if (next === viewer.model) {
+    notify(viewer, "That selection isn't over a page.", "info");
+    return;
+  }
+  applyEdit(viewer, next);
+  clearMarkupSelection(viewer);
+  void rerender(viewer);
+}
+
 // Where the context menu's "Add signature here" wants the stamp dropped. When
 // present the dialog places the stamp at this point on "use"/import; when null
 // it arms the sign tool for a click-to-place, as the dock button does.
@@ -1492,6 +1625,8 @@ window.addEventListener("DOMContentLoaded", () => {
     scale: 1.25,
     textTool: false,
     pendingStamp: null,
+    markupColor: DEFAULT_MARKUP_COLOR,
+    markupRange: null,
     focusAnnotationId: null,
     history: null,
     encrypted: false,
@@ -1631,6 +1766,8 @@ window.addEventListener("DOMContentLoaded", () => {
   document.querySelector<HTMLButtonElement>("#sign-tool")?.addEventListener("click", () => {
     openSignatureDialog(viewer);
   });
+
+  setupMarkupTools(viewer);
 
   // The empty-state screen offers the same Open action as the dock.
   document

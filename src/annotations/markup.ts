@@ -29,6 +29,17 @@ export interface PageOffset {
   readonly top: number;
 }
 
+/** A rendered page and its on-screen bounds, for routing selection rects. */
+export interface MarkupTargetPage {
+  readonly geometry: PageGeometry;
+  readonly bounds: {
+    readonly left: number;
+    readonly top: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
 /**
  * Convert selection line rectangles to user-space quads. Each rect is made
  * page-relative (minus the page offset), then its two opposite corners map
@@ -85,4 +96,43 @@ export function createMarkupFromRects(
     return model;
   }
   return addAnnotation(model, { kind: "markup", page: page.index, style, color, quads });
+}
+
+/** Whether a rect's centre falls within a page's on-screen bounds. */
+function centreWithin(rect: ScreenRect, page: MarkupTargetPage): boolean {
+  const cx = (rect.left + rect.right) / 2;
+  const cy = (rect.top + rect.bottom) / 2;
+  const { left, top, width, height } = page.bounds;
+  return cx >= left && cx <= left + width && cy >= top && cy <= top + height;
+}
+
+/**
+ * Apply a markup to a multi-line, possibly multi-page selection. Each selection
+ * rect is routed to the page its centre lies on; every page that catches rects
+ * gets its own markup. Returns the model unchanged when nothing lands on a page.
+ */
+export function markupSelection(
+  model: DocumentModel,
+  style: MarkupStyle,
+  color: string,
+  rects: readonly ScreenRect[],
+  pages: readonly MarkupTargetPage[],
+  viewport: Viewport,
+): DocumentModel {
+  let next = model;
+  for (const page of pages) {
+    const onPage = rects.filter((rect) => centreWithin(rect, page));
+    if (onPage.length > 0) {
+      next = createMarkupFromRects(
+        next,
+        style,
+        color,
+        onPage,
+        { left: page.bounds.left, top: page.bounds.top },
+        page.geometry,
+        viewport,
+      );
+    }
+  }
+  return next;
 }

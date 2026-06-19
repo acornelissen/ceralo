@@ -46,6 +46,55 @@ const GROUPS: DockGroup[] = [
   },
 ];
 
+/** The default markup colour: a soft highlighter yellow. */
+export const DEFAULT_MARKUP_COLOR = "#ffeb3b";
+
+/**
+ * The markup group: three style actions that apply to the current text selection,
+ * plus a colour control. The colour is a swatch button (so the toolbar stays
+ * button-only for the roving tab order) backed by a hidden native colour input
+ * that it opens; main.ts wires the swatch to the input and tracks the choice.
+ */
+function makeMarkupGroup(platform: Platform): HTMLDivElement {
+  const group = document.createElement("div");
+  group.className = "dock-group";
+  group.setAttribute("aria-label", "Markup");
+
+  group.append(
+    makeButton(
+      { id: "markup-highlight", name: "highlight", label: "Highlight selection" },
+      platform,
+    ),
+    makeButton(
+      { id: "markup-underline", name: "underline", label: "Underline selection" },
+      platform,
+    ),
+    makeButton(
+      { id: "markup-strikethrough", name: "strikethrough", label: "Strike through selection" },
+      platform,
+    ),
+  );
+
+  const swatch = document.createElement("button");
+  swatch.type = "button";
+  swatch.id = "markup-color";
+  swatch.className = "btn-icon markup-color-swatch";
+  swatch.setAttribute("aria-label", "Markup color");
+  swatch.setAttribute("data-tip", "Markup color");
+  swatch.style.setProperty("--markup-color", DEFAULT_MARKUP_COLOR);
+
+  const input = document.createElement("input");
+  input.type = "color";
+  input.id = "markup-color-input";
+  input.className = "markup-color-input";
+  input.value = DEFAULT_MARKUP_COLOR;
+  input.tabIndex = -1; // reached through the swatch, not the tab order
+  input.setAttribute("aria-hidden", "true");
+
+  group.append(swatch, input);
+  return group;
+}
+
 /** Format a tooltip shortcut for the platform, e.g. "⌘⇧S" or "Ctrl+Shift+S". */
 function shortcutLabel(button: DockButton, platform: Platform): string | undefined {
   if (!button.shortcut) {
@@ -172,6 +221,7 @@ export function buildDock(platform: Platform): HTMLElement {
   for (const group of GROUPS) {
     dock.append(makeGroup(group, platform));
   }
+  dock.append(makeMarkupGroup(platform));
   dock.append(makeOverflow());
   dock.append(makePageGroup());
   dock.append(makeZoomGroup(platform));
