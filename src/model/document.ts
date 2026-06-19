@@ -104,7 +104,20 @@ export interface Shape {
   readonly fill: string | null; // "#rrggbb" or null for no fill
 }
 
-export type Annotation = TextBox | SignatureStamp | Markup | StickyNote | Shape;
+/**
+ * A freehand ink annotation: one or more strokes, each an ordered list of
+ * user-space points (matching a PDF /Ink InkList). Drawn as a stroked polyline.
+ */
+export interface Ink {
+  readonly kind: "ink";
+  readonly id: string;
+  readonly page: number;
+  readonly paths: readonly (readonly UserSpacePoint[])[];
+  readonly color: string; // "#rrggbb"
+  readonly strokeWidth: number; // user-space points
+}
+
+export type Annotation = TextBox | SignatureStamp | Markup | StickyNote | Shape | Ink;
 
 /** Per-page geometry captured from pdf.js, in user-space units. */
 export interface PageGeometry {
@@ -182,7 +195,8 @@ export type NewAnnotation =
   | Omit<SignatureStamp, "id">
   | Omit<Markup, "id">
   | Omit<StickyNote, "id">
-  | Omit<Shape, "id">;
+  | Omit<Shape, "id">
+  | Omit<Ink, "id">;
 
 /** Add an annotation with a freshly minted id; returns a new, dirty model. */
 export function addAnnotation(model: DocumentModel, draft: NewAnnotation): DocumentModel {

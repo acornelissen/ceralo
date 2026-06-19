@@ -256,6 +256,43 @@ describe("annotation mutations", () => {
     expect(updated.annotations[0]).toMatchObject({ id: existing.id, fill: "#ffff00" });
   });
 
+  it("adds an ink annotation (the ink union arm)", () => {
+    const ink: NewAnnotation = {
+      kind: "ink",
+      page: 0,
+      paths: [[userSpacePoint(72, 700), userSpacePoint(80, 690), userSpacePoint(95, 685)]],
+      color: "#1144ff",
+      strokeWidth: 2,
+    };
+    const model = addAnnotation(createModel(bytes), ink);
+    const added = model.annotations[0];
+    expect(added?.kind).toBe("ink");
+    expect(added?.id).toBeTruthy();
+    if (added?.kind !== "ink") {
+      throw new Error("expected an ink annotation");
+    }
+    expect(added.paths).toHaveLength(1);
+    expect(added.paths[0]).toHaveLength(3);
+    expect(added.color).toBe("#1144ff");
+  });
+
+  it("updates an ink annotation's colour by id", () => {
+    const ink: NewAnnotation = {
+      kind: "ink",
+      page: 0,
+      paths: [[userSpacePoint(10, 20), userSpacePoint(30, 40)]],
+      color: "#000000",
+      strokeWidth: 1,
+    };
+    const added = addAnnotation(createModel(bytes), ink);
+    const existing = added.annotations[0];
+    if (existing?.kind !== "ink") {
+      throw new Error("expected an ink annotation");
+    }
+    const updated = updateAnnotation(added, { ...existing, color: "#ff0000" });
+    expect(updated.annotations[0]).toMatchObject({ id: existing.id, color: "#ff0000" });
+  });
+
   it("updates a markup annotation's style by id", () => {
     const markup: NewAnnotation = {
       kind: "markup",
