@@ -1,5 +1,6 @@
 import {
   BlendMode,
+  LineCapStyle,
   PDFCheckBox,
   PDFDocument,
   PDFDropdown,
@@ -15,6 +16,7 @@ import type {
   Markup,
   DocumentModel,
   FieldValue,
+  Ink,
   Shape,
   SignatureStamp,
   StickyNote,
@@ -262,6 +264,29 @@ function drawShape(page: PDFPage, shape: Shape): void {
   }
 }
 
+/**
+ * Draw one freehand ink annotation as a stroked polyline: each path becomes a
+ * run of connected line segments with round caps so the joints read smoothly.
+ * Points are already user space, which is pdf-lib's drawing space.
+ */
+function drawInk(page: PDFPage, ink: Ink): void {
+  const { r, g, b } = hexToRgb(ink.color);
+  const color = rgb(r, g, b);
+  for (const path of ink.paths) {
+    for (let i = 1; i < path.length; i += 1) {
+      const from = path[i - 1]!;
+      const to = path[i]!;
+      page.drawLine({
+        start: { x: from.x, y: from.y },
+        end: { x: to.x, y: to.y },
+        thickness: ink.strokeWidth,
+        color,
+        lineCap: LineCapStyle.Round,
+      });
+    }
+  }
+}
+
 /** The user-space size of a sticky note's clickable icon rectangle. */
 const NOTE_ICON_SIZE = 18;
 
@@ -365,6 +390,16 @@ export async function saveModel(
     const page = pages[shape.page];
     if (page) {
       drawShape(page, shape);
+    }
+  }
+
+  for (const ink of model.annotations) {
+    if (ink.kind !== "ink") {
+      continue;
+    }
+    const page = pages[ink.page];
+    if (page) {
+      drawInk(page, ink);
     }
   }
 

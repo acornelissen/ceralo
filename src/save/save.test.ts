@@ -701,6 +701,60 @@ describe("hexToRgb", () => {
     );
   });
 
+  it("draws a freehand ink stroke as connected segments that survive re-open", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "ink",
+      page: 0,
+      paths: [[userSpacePoint(72, 700), userSpacePoint(120, 690), userSpacePoint(160, 710)]],
+      color: "#1144ff",
+      strokeWidth: 2,
+    });
+
+    const segments = (await drawnPaths(await saveModel(model), 1)).filter(
+      (p) => p.stroke?.toLowerCase() === "#1144ff",
+    );
+    expect(segments).toHaveLength(2); // 3 points -> 2 connected segments
+  });
+
+  it("draws each ink stroke (path) of a multi-stroke annotation", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "ink",
+      page: 0,
+      paths: [
+        [userSpacePoint(72, 700), userSpacePoint(120, 690)],
+        [userSpacePoint(200, 600), userSpacePoint(220, 580), userSpacePoint(240, 600)],
+      ],
+      color: "#aa00aa",
+      strokeWidth: 1.5,
+    });
+
+    const segments = (await drawnPaths(await saveModel(model), 1)).filter(
+      (p) => p.stroke?.toLowerCase() === "#aa00aa",
+    );
+    expect(segments).toHaveLength(3); // 1 + 2 segments
+  });
+
+  it("draws ink only on its own page", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "ink",
+      page: 1,
+      paths: [[userSpacePoint(72, 700), userSpacePoint(120, 690)]],
+      color: "#1144ff",
+      strokeWidth: 2,
+    });
+
+    const saved = await saveModel(model);
+    expect((await drawnPaths(saved, 1)).some((p) => p.stroke?.toLowerCase() === "#1144ff")).toBe(
+      false,
+    );
+    expect((await drawnPaths(saved, 2)).some((p) => p.stroke?.toLowerCase() === "#1144ff")).toBe(
+      true,
+    );
+  });
+
   it("flatten bakes field values into content and removes editable fields", async () => {
     let model = createModel(fixture("acroform.pdf"));
     model = setFieldValue(model, "text.fullName", "Ada Lovelace");
