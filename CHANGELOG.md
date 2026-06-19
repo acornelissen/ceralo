@@ -5,6 +5,34 @@ All notable changes to SignetPDF are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-06-19
+
+### Added
+
+- Text markup: highlight, underline, and strikethrough over selected text, with a
+  colour picker. Markup is saved into the PDF and reads through the text.
+- Sticky-note comments: drop an anchored note on the page and type a comment,
+  saved as a standard PDF text annotation.
+- Shapes: rectangle, ellipse, line, and arrow, drawn by dragging, each with a
+  stroke colour and an optional fill.
+- Freehand ink: draw on the page with a pen in any colour.
+- The new annotations are first-class: move them by dragging or with the arrow
+  keys, resize shapes by their handles, delete them, and undo/redo every change.
+
+### Changed
+
+- Reorganised the toolbar. Markup tools open from a **Highlight** button, and the
+  drawing and annotation tools (text, note, shapes, ink) open from a **Drawing &
+  annotation** button, each as a popover, keeping the main dock uncluttered.
+
+### Fixed
+
+- The on-screen highlight is now translucent so the highlighted text stays
+  readable.
+- Closing the window with unsaved changes now shows a confirmation dialog. The
+  previous prompt relied on a browser dialog the desktop webview does not render,
+  so it never appeared.
+
 ## [0.4.2] - 2026-06-18
 
 ### Fixed
@@ -109,6 +137,7 @@ Initial release — the walking skeleton through milestone M5.
 - Native file I/O via Rust commands (open, save, save as) with a path-grant
   allowlist.
 
+[1.0.0]: https://github.com/acornelissen/signetpdf/compare/v0.4.2...v1.0.0
 [0.4.2]: https://github.com/acornelissen/signetpdf/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/acornelissen/signetpdf/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/acornelissen/signetpdf/compare/v0.3.0...v0.4.0
