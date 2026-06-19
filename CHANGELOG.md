@@ -5,6 +5,14 @@ All notable changes to SignetPDF are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- License: removed the Commons Clause. SignetPDF is now under plain Apache-2.0,
+  an OSI-approved open-source licence, so it may be used commercially. This also
+  makes the project eligible for open-source code-signing programs.
+
 ## [1.0.0] - 2026-06-19
 
 ### Added

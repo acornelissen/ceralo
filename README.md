@@ -97,8 +97,6 @@ Binary code-signing and notarization are not done yet: macOS builds are unnotari
 
 ## License
 
-[Apache-2.0 with the Commons Clause](LICENSE), copyright The SignetPDF
-contributors. The Commons Clause adds one restriction on top of Apache-2.0: you
-may not sell the software (or a product/service whose value derives substantially
-from it). All other Apache-2.0 rights — use, modify, and redistribute for
-non-commercial purposes — are unchanged.
+[Apache-2.0](LICENSE), copyright The SignetPDF contributors. You are free to
+use, modify, and redistribute the software, including commercially, under the
+terms of the licence.

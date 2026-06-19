@@ -61,4 +61,4 @@ for questions. For security issues, follow [SECURITY.md](SECURITY.md) — do not
 file a public issue.
 
 By contributing, you agree your contributions are licensed under the repository's
-[LICENSE](LICENSE) (Apache-2.0 with the Commons Clause).
+[LICENSE](LICENSE) (Apache-2.0).
