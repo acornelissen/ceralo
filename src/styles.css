@@ -908,6 +908,81 @@ body.drag-over::after {
   outline-offset: 1px;
 }
 
+/* Sticky note: a fixed-size pin at the anchor with a comment popup. The pin
+   stays a constant size at any zoom; the popup opens above it on click/focus. */
+.overlay .note {
+  position: absolute;
+  pointer-events: auto;
+}
+
+.overlay .note-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 3px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.25));
+  border-radius: 4px;
+  background: #ffeb3b;
+  color: #533f03;
+  cursor: pointer;
+}
+
+.overlay .note-icon:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+.overlay .note-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.overlay .note-popup {
+  position: absolute;
+  left: 0;
+  bottom: 26px; /* above the pin */
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  width: 200px;
+  padding: 8px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.2));
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  z-index: 2;
+}
+
+.overlay .note.open .note-popup {
+  display: flex;
+}
+
+.overlay .note-text {
+  min-height: 60px;
+  resize: vertical;
+  font: inherit;
+  padding: 4px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.2));
+  border-radius: 4px;
+}
+
+.overlay .note-delete {
+  align-self: flex-end;
+  padding: 2px 8px;
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  background: var(--danger);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+
+.overlay .note-delete:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Markup colour swatch: an icon-sized button showing the current --markup-color,
    with a hidden native colour input it opens. */
 .markup-color-swatch {
