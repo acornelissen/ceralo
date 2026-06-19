@@ -108,6 +108,68 @@ async function filledRects(bytes: Uint8Array, pageNumber: number): Promise<Fille
   return rects;
 }
 
+/** A painted path recovered from a page, with stroke/fill colour and intent. */
+interface DrawnPath {
+  stroke: string | null;
+  fill: string | null;
+  stroked: boolean;
+  filled: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Every constructed path on a page with its stroke/fill colour, paint intent and
+ * absolute bounding box. Mirrors filledRects but distinguishes stroke from fill
+ * so shape annotations (rectangle/ellipse/line/arrow) can be verified.
+ */
+async function drawnPaths(bytes: Uint8Array, pageNumber: number): Promise<DrawnPath[]> {
+  const doc = await loadPdfDocument(bytes);
+  const opList = await (await doc.getPage(pageNumber)).getOperatorList();
+  const fillOps = new Set([OPS.fill, OPS.eoFill, OPS.fillStroke, OPS.eoFillStroke]);
+  const strokeOps = new Set([OPS.stroke, OPS.fillStroke, OPS.eoFillStroke]);
+  const paths: DrawnPath[] = [];
+  let ctm: Matrix = [1, 0, 0, 1, 0, 0];
+  const stack: Matrix[] = [];
+  let stroke: string | null = null;
+  let fill: string | null = null;
+  for (let i = 0; i < opList.fnArray.length; i += 1) {
+    const fn = opList.fnArray[i];
+    const args = opList.argsArray[i] as unknown;
+    if (fn === OPS.save) {
+      stack.push(ctm);
+    } else if (fn === OPS.restore) {
+      ctm = stack.pop() ?? ctm;
+    } else if (fn === OPS.transform) {
+      ctm = multiply(ctm, args as Matrix);
+    } else if (fn === OPS.setStrokeRGBColor) {
+      stroke = (args as string[])[0] ?? null;
+    } else if (fn === OPS.setFillRGBColor) {
+      fill = (args as string[])[0] ?? null;
+    } else if (fn === OPS.constructPath) {
+      const [paintOp, , minMax] = args as [number, unknown, Record<number, number>];
+      const [c0, c1, c2, c3] = [minMax[0]!, minMax[1]!, minMax[2]!, minMax[3]!];
+      const p1x = ctm[0] * c0 + ctm[2] * c1 + ctm[4];
+      const p1y = ctm[1] * c0 + ctm[3] * c1 + ctm[5];
+      const p2x = ctm[0] * c2 + ctm[2] * c3 + ctm[4];
+      const p2y = ctm[1] * c2 + ctm[3] * c3 + ctm[5];
+      paths.push({
+        stroke,
+        fill,
+        stroked: strokeOps.has(paintOp),
+        filled: fillOps.has(paintOp),
+        x: Math.min(p1x, p2x),
+        y: Math.min(p1y, p2y),
+        width: Math.abs(p2x - p1x),
+        height: Math.abs(p2y - p1y),
+      });
+    }
+  }
+  return paths;
+}
+
 interface PdfWidget {
   subtype?: string;
   fieldName?: string;
@@ -528,6 +590,115 @@ describe("hexToRgb", () => {
     const saved = await saveModel(model);
     expect(await noteAnnotations(saved, 1)).toHaveLength(0);
     expect((await noteAnnotations(saved, 2))[0]?.contents).toBe("second page note");
+  });
+
+  it("draws a stroked rectangle whose box and colour survive re-open", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "shape",
+      page: 0,
+      shape: "rectangle",
+      start: userSpacePoint(72, 700),
+      end: userSpacePoint(200, 640),
+      stroke: "#cc0000",
+      strokeWidth: 1.5,
+      fill: null,
+    });
+
+    const rect = (await drawnPaths(await saveModel(model), 1)).find(
+      (p) => p.stroke?.toLowerCase() === "#cc0000" && p.stroked,
+    );
+    expect(rect).toBeDefined();
+    expect(rect?.filled).toBe(false); // stroke only
+    expect(rect?.x).toBeCloseTo(72, 0);
+    expect(rect?.y).toBeCloseTo(640, 0);
+    expect(rect?.width).toBeCloseTo(128, 0);
+    expect(rect?.height).toBeCloseTo(60, 0);
+  });
+
+  it("fills an ellipse when a fill colour is set, and still strokes it", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "shape",
+      page: 0,
+      shape: "ellipse",
+      start: userSpacePoint(100, 500),
+      end: userSpacePoint(220, 420),
+      stroke: "#0000cc",
+      strokeWidth: 1,
+      fill: "#ffff00",
+    });
+
+    const path = (await drawnPaths(await saveModel(model), 1)).find(
+      (p) => p.stroke?.toLowerCase() === "#0000cc",
+    );
+    expect(path).toBeDefined();
+    expect(path?.filled).toBe(true);
+    expect(path?.fill?.toLowerCase()).toBe("#ffff00");
+    expect(path?.width).toBeCloseTo(120, 0);
+    expect(path?.height).toBeCloseTo(80, 0);
+  });
+
+  it("draws a line spanning its two endpoints", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "shape",
+      page: 0,
+      shape: "line",
+      start: userSpacePoint(80, 400),
+      end: userSpacePoint(260, 520),
+      stroke: "#008800",
+      strokeWidth: 2,
+      fill: null,
+    });
+
+    const lines = (await drawnPaths(await saveModel(model), 1)).filter(
+      (p) => p.stroke?.toLowerCase() === "#008800",
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.width).toBeCloseTo(180, 0);
+    expect(lines[0]?.height).toBeCloseTo(120, 0);
+  });
+
+  it("draws an arrow as a shaft plus a head (more strokes than a plain line)", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "shape",
+      page: 0,
+      shape: "arrow",
+      start: userSpacePoint(80, 300),
+      end: userSpacePoint(260, 300),
+      stroke: "#222222",
+      strokeWidth: 2,
+      fill: null,
+    });
+
+    const strokes = (await drawnPaths(await saveModel(model), 1)).filter(
+      (p) => p.stroke?.toLowerCase() === "#222222",
+    );
+    expect(strokes.length).toBeGreaterThanOrEqual(3); // shaft + two head lines
+  });
+
+  it("draws a shape only on its own page", async () => {
+    let model = createModel(fixture("two-page.pdf"));
+    model = addAnnotation(model, {
+      kind: "shape",
+      page: 1,
+      shape: "rectangle",
+      start: userSpacePoint(72, 700),
+      end: userSpacePoint(200, 640),
+      stroke: "#cc0000",
+      strokeWidth: 1.5,
+      fill: null,
+    });
+
+    const saved = await saveModel(model);
+    expect((await drawnPaths(saved, 1)).some((p) => p.stroke?.toLowerCase() === "#cc0000")).toBe(
+      false,
+    );
+    expect((await drawnPaths(saved, 2)).some((p) => p.stroke?.toLowerCase() === "#cc0000")).toBe(
+      true,
+    );
   });
 
   it("flatten bakes field values into content and removes editable fields", async () => {

@@ -15,6 +15,7 @@ import type {
   Markup,
   DocumentModel,
   FieldValue,
+  Shape,
   SignatureStamp,
   StickyNote,
   TextBox,
@@ -180,6 +181,87 @@ function drawMarkup(page: PDFPage, markup: Markup): void {
   }
 }
 
+/** The axis-aligned bounding box (user space) of a shape's two points. */
+function shapeBox(shape: Shape): { x: number; y: number; width: number; height: number } {
+  return {
+    x: Math.min(shape.start.x, shape.end.x),
+    y: Math.min(shape.start.y, shape.end.y),
+    width: Math.abs(shape.end.x - shape.start.x),
+    height: Math.abs(shape.end.y - shape.start.y),
+  };
+}
+
+/** The two short lines forming an arrowhead at `end`, pointing back along the shaft. */
+function arrowHeadLines(
+  shape: Shape,
+): { start: { x: number; y: number }; end: { x: number; y: number } }[] {
+  const angle = Math.atan2(shape.end.y - shape.start.y, shape.end.x - shape.start.x);
+  const length = Math.max(6, shape.strokeWidth * 4);
+  const spread = Math.PI / 7; // ~26 degrees off the shaft
+  const tip = { x: shape.end.x, y: shape.end.y };
+  return [angle - spread, angle + spread].map((a) => ({
+    start: tip,
+    end: { x: tip.x - length * Math.cos(a), y: tip.y - length * Math.sin(a) },
+  }));
+}
+
+/**
+ * Draw one shape as page content. Rectangle/ellipse use their two points' bounding
+ * box with an optional fill; line/arrow run start -> end (arrowhead at end). All
+ * geometry is already user space, which is pdf-lib's drawing space.
+ */
+function drawShape(page: PDFPage, shape: Shape): void {
+  const stroke = hexToRgb(shape.stroke);
+  const strokeColor = rgb(stroke.r, stroke.g, stroke.b);
+  // Omit `color` entirely when there is no fill (exactOptionalPropertyTypes).
+  const fill = shape.fill ? hexToRgb(shape.fill) : null;
+  const fillOption = fill ? { color: rgb(fill.r, fill.g, fill.b) } : {};
+
+  if (shape.shape === "rectangle") {
+    const box = shapeBox(shape);
+    page.drawRectangle({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      borderColor: strokeColor,
+      borderWidth: shape.strokeWidth,
+      ...fillOption,
+    });
+    return;
+  }
+  if (shape.shape === "ellipse") {
+    const box = shapeBox(shape);
+    page.drawEllipse({
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+      xScale: box.width / 2,
+      yScale: box.height / 2,
+      borderColor: strokeColor,
+      borderWidth: shape.strokeWidth,
+      ...fillOption,
+    });
+    return;
+  }
+  // line or arrow: the shaft, plus an arrowhead for arrows.
+  page.drawLine({
+    start: { x: shape.start.x, y: shape.start.y },
+    end: { x: shape.end.x, y: shape.end.y },
+    thickness: shape.strokeWidth,
+    color: strokeColor,
+  });
+  if (shape.shape === "arrow") {
+    for (const head of arrowHeadLines(shape)) {
+      page.drawLine({
+        start: head.start,
+        end: head.end,
+        thickness: shape.strokeWidth,
+        color: strokeColor,
+      });
+    }
+  }
+}
+
 /** The user-space size of a sticky note's clickable icon rectangle. */
 const NOTE_ICON_SIZE = 18;
 
@@ -273,6 +355,16 @@ export async function saveModel(
     const page = pages[markup.page];
     if (page) {
       drawMarkup(page, markup);
+    }
+  }
+
+  for (const shape of model.annotations) {
+    if (shape.kind !== "shape") {
+      continue;
+    }
+    const page = pages[shape.page];
+    if (page) {
+      drawShape(page, shape);
     }
   }
 
