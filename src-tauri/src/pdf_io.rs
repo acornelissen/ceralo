@@ -586,6 +586,23 @@ pub async fn save_pdf_as(
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+/// Write bytes to a brand-new owner-only file. `create_new` refuses to follow or
+/// overwrite an existing path or symlink, so a symlink pre-placed at a guessed
+/// temp path cannot redirect the write; the 0600 mode (unix) keeps the document
+/// unreadable by other local users on a shared temp dir. Mirrors the owner-only
+/// handling `write_signature` uses for the equally sensitive signature files.
+fn write_new_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(bytes)
+}
+
 /// Flatten-to-bytes is done on the frontend (the same projection as Save). This
 /// command only takes the finished PDF, drops it in the per-user temp dir, and
 /// opens it with the OS default handler so the user reaches their print dialog.
@@ -598,7 +615,7 @@ pub fn print_pdf(bytes: Vec<u8>) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .as_nanos();
     let path = print_temp_path(&std::env::temp_dir(), nanos);
-    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    write_new_private(&path, &bytes).map_err(|e| e.to_string())?;
     opener::open(&path).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -953,5 +970,29 @@ mod tests {
             remove_signature(dir.path(), &id),
             Err(SignatureError::NotFound)
         ));
+    }
+
+    #[test]
+    fn write_new_private_creates_owner_only_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secret.pdf");
+        write_new_private(&path, b"%PDF-secret").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"%PDF-secret");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "temp print must be owner-only");
+        }
+    }
+
+    #[test]
+    fn write_new_private_refuses_an_existing_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("exists.pdf");
+        std::fs::write(&path, b"old").unwrap();
+        // create_new must fail closed rather than follow/overwrite (symlink guard).
+        assert!(write_new_private(&path, b"new").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"old", "existing file untouched");
     }
 }
