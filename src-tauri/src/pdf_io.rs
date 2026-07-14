@@ -3,6 +3,7 @@ use std::fmt;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -343,6 +344,32 @@ impl From<std::io::Error> for SignatureError {
 
 /// The 8-byte PNG file signature.
 const PNG_MAGIC: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/// Shared prefix for the temp PDFs we hand to the OS printer. Lets the startup
+/// sweep recognise and purge only our own leftovers.
+const PRINT_PREFIX: &str = "ceralo-print-";
+
+/// How long a temp-print file may linger before the startup sweep removes it.
+/// Long enough that the external viewer has certainly finished opening it.
+const PRINT_MAX_AGE: Duration = Duration::from_secs(60 * 60);
+
+/// Name for a temp-print file: prefix + zero-padded hex nanos + `.pdf`. The
+/// fixed-width hex keeps names unique per creation instant and sortable.
+fn print_file_name(nanos: u128) -> String {
+    format!("{PRINT_PREFIX}{nanos:032x}.pdf")
+}
+
+/// Full path for a temp-print file inside `dir`.
+fn print_temp_path(dir: &Path, nanos: u128) -> PathBuf {
+    dir.join(print_file_name(nanos))
+}
+
+/// True when `name` is one of our temp-print PDFs and has aged past `max_age`.
+/// Only our prefix + `.pdf` files are ever eligible, so the sweep can never
+/// delete an unrelated temp file.
+fn is_purgeable_print(name: &str, age: Duration, max_age: Duration) -> bool {
+    name.starts_with(PRINT_PREFIX) && name.ends_with(".pdf") && age >= max_age
+}
 
 /// A sortable, filesystem-safe id from a nanosecond timestamp: 32-char zero-
 /// padded hex, so lexical order matches chronological order. Generated backend-
@@ -693,6 +720,42 @@ mod tests {
         assert_eq!(saved.len(), 1);
         assert_eq!(saved[0].id, signature_id(1));
         assert_eq!(saved[0].png, bytes);
+    }
+
+    #[test]
+    fn print_file_name_is_prefixed_padded_hex_pdf() {
+        let name = print_file_name(0xABC);
+        assert!(name.starts_with("ceralo-print-"), "carries the shared prefix");
+        assert!(name.ends_with(".pdf"), "has a .pdf extension so the OS picks a PDF handler");
+        // Zero-padded hex nanos: fixed width keeps names sortable and unique.
+        assert_eq!(name, "ceralo-print-00000000000000000000000000000abc.pdf");
+    }
+
+    #[test]
+    fn print_file_name_is_unique_per_nanos() {
+        assert_ne!(print_file_name(1), print_file_name(2));
+    }
+
+    #[test]
+    fn print_temp_path_joins_the_dir() {
+        let path = print_temp_path(Path::new("/tmp"), 1);
+        assert_eq!(path.parent().unwrap(), Path::new("/tmp"));
+        assert!(path.file_name().unwrap().to_str().unwrap().starts_with("ceralo-print-"));
+    }
+
+    #[test]
+    fn purges_only_our_old_pdfs() {
+        let old = Duration::from_secs(7200);
+        let fresh = Duration::from_secs(10);
+        let max = Duration::from_secs(3600);
+        // Ours, old enough -> purge.
+        assert!(is_purgeable_print("ceralo-print-0001.pdf", old, max));
+        // Ours but recent -> keep (the viewer may still hold it open).
+        assert!(!is_purgeable_print("ceralo-print-0001.pdf", fresh, max));
+        // Not ours -> never touch, regardless of age.
+        assert!(!is_purgeable_print("someone-else.pdf", old, max));
+        // Ours-looking prefix but not a PDF -> leave alone.
+        assert!(!is_purgeable_print("ceralo-print-0001.tmp", old, max));
     }
 
     #[cfg(unix)]
