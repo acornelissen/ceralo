@@ -634,7 +634,9 @@ pub fn purge_stale_prints() {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         let Ok(meta) = entry.metadata() else { continue };
-        let Ok(modified) = meta.modified() else { continue };
+        let Ok(modified) = meta.modified() else {
+            continue;
+        };
         let age = now.duration_since(modified).unwrap_or_default();
         if is_purgeable_print(name, age, PRINT_MAX_AGE) {
             let _ = std::fs::remove_file(entry.path());
@@ -781,8 +783,14 @@ mod tests {
     #[test]
     fn print_file_name_is_prefixed_padded_hex_pdf() {
         let name = print_file_name(0xABC);
-        assert!(name.starts_with("ceralo-print-"), "carries the shared prefix");
-        assert!(name.ends_with(".pdf"), "has a .pdf extension so the OS picks a PDF handler");
+        assert!(
+            name.starts_with("ceralo-print-"),
+            "carries the shared prefix"
+        );
+        assert!(
+            name.ends_with(".pdf"),
+            "has a .pdf extension so the OS picks a PDF handler"
+        );
         // Zero-padded hex nanos: fixed width keeps names sortable and unique.
         assert_eq!(name, "ceralo-print-00000000000000000000000000000abc.pdf");
     }
@@ -796,7 +804,12 @@ mod tests {
     fn print_temp_path_joins_the_dir() {
         let path = print_temp_path(Path::new("/tmp"), 1);
         assert_eq!(path.parent().unwrap(), Path::new("/tmp"));
-        assert!(path.file_name().unwrap().to_str().unwrap().starts_with("ceralo-print-"));
+        assert!(path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("ceralo-print-"));
     }
 
     #[test]
@@ -993,6 +1006,10 @@ mod tests {
         std::fs::write(&path, b"old").unwrap();
         // create_new must fail closed rather than follow/overwrite (symlink guard).
         assert!(write_new_private(&path, b"new").is_err());
-        assert_eq!(std::fs::read(&path).unwrap(), b"old", "existing file untouched");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"old",
+            "existing file untouched"
+        );
     }
 }
