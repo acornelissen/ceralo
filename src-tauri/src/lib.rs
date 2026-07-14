@@ -8,6 +8,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(pdf_io::GrantedPaths::default())
+        .setup(|_app| {
+            // Best-effort cleanup of our own leftover temp-print files.
+            std::thread::spawn(pdf_io::purge_stale_prints);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             pdf_io::open_pdf,
             pdf_io::save_pdf,
@@ -17,7 +22,8 @@ pub fn run() {
             pdf_io::list_signatures,
             pdf_io::rename_signature,
             pdf_io::set_default_signature,
-            pdf_io::delete_signature
+            pdf_io::delete_signature,
+            pdf_io::print_pdf
         ])
         // Drag-and-drop is handled in Rust so the dropped path is read and
         // granted backend-side and only the bytes reach the webview — the JS

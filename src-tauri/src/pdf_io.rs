@@ -347,25 +347,19 @@ const PNG_MAGIC: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 /// Shared prefix for the temp PDFs we hand to the OS printer. Lets the startup
 /// sweep recognise and purge only our own leftovers.
-// Consumed by the print_pdf command in the next task; the allow(dead_code)
-// attributes are removed once that command references them.
-#[allow(dead_code)]
 const PRINT_PREFIX: &str = "ceralo-print-";
 
 /// How long a temp-print file may linger before the startup sweep removes it.
 /// Long enough that the external viewer has certainly finished opening it.
-#[allow(dead_code)]
 const PRINT_MAX_AGE: Duration = Duration::from_secs(60 * 60);
 
 /// Name for a temp-print file: prefix + zero-padded hex nanos + `.pdf`. The
 /// fixed-width hex keeps names unique per creation instant and sortable.
-#[allow(dead_code)]
 fn print_file_name(nanos: u128) -> String {
     format!("{PRINT_PREFIX}{nanos:032x}.pdf")
 }
 
 /// Full path for a temp-print file inside `dir`.
-#[allow(dead_code)]
 fn print_temp_path(dir: &Path, nanos: u128) -> PathBuf {
     dir.join(print_file_name(nanos))
 }
@@ -373,7 +367,6 @@ fn print_temp_path(dir: &Path, nanos: u128) -> PathBuf {
 /// True when `name` is one of our temp-print PDFs and has aged past `max_age`.
 /// Only our prefix + `.pdf` files are ever eligible, so the sweep can never
 /// delete an unrelated temp file.
-#[allow(dead_code)]
 fn is_purgeable_print(name: &str, age: Duration, max_age: Duration) -> bool {
     name.starts_with(PRINT_PREFIX) && name.ends_with(".pdf") && age >= max_age
 }
@@ -591,6 +584,45 @@ pub async fn save_pdf_as(
     };
     write_pdf(&set, &path, &bytes).map_err(|e| e.to_string())?;
     Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Flatten-to-bytes is done on the frontend (the same projection as Save). This
+/// command only takes the finished PDF, drops it in the per-user temp dir, and
+/// opens it with the OS default handler so the user reaches their print dialog.
+/// The file cannot be deleted here because the external viewer holds it open;
+/// `purge_stale_prints` cleans it up on a later launch.
+#[tauri::command]
+pub fn print_pdf(bytes: Vec<u8>) -> Result<(), String> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let path = print_temp_path(&std::env::temp_dir(), nanos);
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    opener::open(&path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Best-effort sweep of our own leftover temp-print files in the per-user temp
+/// dir. Runs at startup; silently ignores every error (a locked or vanished
+/// file just stays for the next launch). Only files matching our prefix and
+/// past `PRINT_MAX_AGE` are removed — never an unrelated temp file.
+pub fn purge_stale_prints() {
+    let dir = std::env::temp_dir();
+    let now = std::time::SystemTime::now();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Ok(meta) = entry.metadata() else { continue };
+        let Ok(modified) = meta.modified() else { continue };
+        let age = now.duration_since(modified).unwrap_or_default();
+        if is_purgeable_print(name, age, PRINT_MAX_AGE) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 #[cfg(test)]
