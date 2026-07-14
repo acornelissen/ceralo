@@ -347,19 +347,25 @@ const PNG_MAGIC: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 /// Shared prefix for the temp PDFs we hand to the OS printer. Lets the startup
 /// sweep recognise and purge only our own leftovers.
+// Consumed by the print_pdf command in the next task; the allow(dead_code)
+// attributes are removed once that command references them.
+#[allow(dead_code)]
 const PRINT_PREFIX: &str = "ceralo-print-";
 
 /// How long a temp-print file may linger before the startup sweep removes it.
 /// Long enough that the external viewer has certainly finished opening it.
+#[allow(dead_code)]
 const PRINT_MAX_AGE: Duration = Duration::from_secs(60 * 60);
 
 /// Name for a temp-print file: prefix + zero-padded hex nanos + `.pdf`. The
 /// fixed-width hex keeps names unique per creation instant and sortable.
+#[allow(dead_code)]
 fn print_file_name(nanos: u128) -> String {
     format!("{PRINT_PREFIX}{nanos:032x}.pdf")
 }
 
 /// Full path for a temp-print file inside `dir`.
+#[allow(dead_code)]
 fn print_temp_path(dir: &Path, nanos: u128) -> PathBuf {
     dir.join(print_file_name(nanos))
 }
@@ -367,6 +373,7 @@ fn print_temp_path(dir: &Path, nanos: u128) -> PathBuf {
 /// True when `name` is one of our temp-print PDFs and has aged past `max_age`.
 /// Only our prefix + `.pdf` files are ever eligible, so the sweep can never
 /// delete an unrelated temp file.
+#[allow(dead_code)]
 fn is_purgeable_print(name: &str, age: Duration, max_age: Duration) -> bool {
     name.starts_with(PRINT_PREFIX) && name.ends_with(".pdf") && age >= max_age
 }
