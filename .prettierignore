@@ -11,6 +11,7 @@ src/pdf/textlayer.css
 .agents
 .codex
 .claude
+.superpowers
 .vscode
 AGENTS.md
 CLAUDE.md

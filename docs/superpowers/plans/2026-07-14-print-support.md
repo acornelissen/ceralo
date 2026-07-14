@@ -25,9 +25,11 @@
 Pure, dependency-free helpers so the naming and cleanup logic are unit-tested without touching the filesystem or Tauri.
 
 **Files:**
+
 - Modify: `src-tauri/src/pdf_io.rs` (add helpers near the signature helpers around line 350; add tests in the existing `#[cfg(test)] mod tests` block at line 562)
 
 **Interfaces:**
+
 - Consumes: `std::path::{Path, PathBuf}`, `std::time::Duration` (add `use std::time::Duration;` if not already imported — it is not; add it to the imports at the top).
 - Produces (used by Task 2):
   - `const PRINT_PREFIX: &str = "ceralo-print-";`
@@ -140,11 +142,13 @@ git commit -m "feat: add temp-print naming and purge helpers"
 Wire the pure helpers into a Tauri command that writes the temp file and opens it with the OS, plus a best-effort startup sweep. This is integration glue over the OS/opener; the meaty logic was tested in Task 1.
 
 **Files:**
+
 - Modify: `src-tauri/Cargo.toml` (add the `opener` dependency)
 - Modify: `src-tauri/src/pdf_io.rs` (add `print_pdf` command and `purge_stale_prints`)
 - Modify: `src-tauri/src/lib.rs` (register the command; run the startup sweep)
 
 **Interfaces:**
+
 - Consumes: `print_temp_path`, `is_purgeable_print`, `PRINT_MAX_AGE`, `PRINT_PREFIX` from Task 1; `opener::open`.
 - Produces (used by Task 4 / frontend): the Tauri command `print_pdf(bytes: Vec<u8>) -> Result<(), String>` (invoked from JS as `invoke("print_pdf", { bytes })`); and `pub fn purge_stale_prints()`.
 
@@ -244,10 +248,12 @@ git commit -m "feat: add print_pdf command with OS handoff and temp cleanup"
 A pure, injectable decision function so the guard logic (no document / encrypted / print) is unit-tested without the DOM or Tauri — matching the codebase's pure-module pattern (`model/coords`, `save/save`).
 
 **Files:**
+
 - Create: `src/print/print.ts`
 - Test: `src/print/print.test.ts`
 
 **Interfaces:**
+
 - Consumes: `DocumentModel` from `../model/document`.
 - Produces (used by Task 4):
   - `interface PrintPort { flatten(model: DocumentModel): Promise<Uint8Array>; send(bytes: Uint8Array): Promise<void> }`
@@ -365,6 +371,7 @@ git commit -m "feat: add pure printDocument seam"
 Expose printing: a printer icon, a Cmd/Ctrl+P shortcut (both TDD), a dock File-group button, and the `main.ts` wiring that connects them to the `printDocument` seam and the `print_pdf` command.
 
 **Files:**
+
 - Modify: `src/app/icons.ts` (add the `print` icon)
 - Test: `src/app/icons.test.ts` (assert `print` is exposed)
 - Modify: `src/app/shortcuts.ts` (add the `print` action)
@@ -373,6 +380,7 @@ Expose printing: a printer icon, a Cmd/Ctrl+P shortcut (both TDD), a dock File-g
 - Modify: `src/main.ts` (import `printDocument`; add a `printFlattened` wrapper; wire the button click and the shortcut)
 
 **Interfaces:**
+
 - Consumes: `printDocument`, `PrintPort` from Task 3; `projectBytes` and `blockedByEncryption` and `notify` already in `main.ts`; `invoke` from `@tauri-apps/api/core`; the `print_pdf` command from Task 2.
 - Produces: user-visible Print button (`#print`) and Cmd/Ctrl+P.
 
@@ -381,7 +389,7 @@ Expose printing: a printer icon, a Cmd/Ctrl+P shortcut (both TDD), a dock File-g
 In `src/app/shortcuts.test.ts`, inside the `"maps the core actions"` test, add a line:
 
 ```ts
-    expect(matchShortcut(chord({ key: "p", ctrlKey: true }), "other")).toBe("print");
+expect(matchShortcut(chord({ key: "p", ctrlKey: true }), "other")).toBe("print");
 ```
 
 - [ ] **Step 2: Write the failing icon test**
@@ -478,7 +486,7 @@ Note: `blockedByEncryption` both reports and returns a boolean; here we only nee
 In `src/main.ts`, next to the other `on(...)` wirings (after the `#export-flat` line ~2160), add:
 
 ```ts
-  on("#print", () => printFlattened(viewer), "print the PDF");
+on("#print", () => printFlattened(viewer), "print the PDF");
 ```
 
 - [ ] **Step 10: Wire main.ts — the shortcut**
@@ -540,6 +548,7 @@ bd close SignetPDF-c3u
 ## Self-Review
 
 **Spec coverage:**
+
 - WYSIWYG flattened output → Task 3 (`flatten` port) + Task 4 (`projectBytes({flatten:true})`). ✓
 - No-document / encrypted guards → Task 3 + Task 4. ✓
 - Dock button + Cmd/Ctrl+P → Task 4. ✓

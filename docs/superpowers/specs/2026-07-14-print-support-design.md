@@ -48,8 +48,8 @@ WYSIWYG. Guards match the save path:
   extracting the seam is how we keep TDD honest here.
 - A `printFlattened(viewer)` wrapper in `src/main.ts`, structurally a sibling of
   `exportFlattened`, supplies the port: `flatten` = `projectBytes(model, {
-  flatten: true })`, `send` = `invoke("print_pdf", { bytes: Array.from(bytes)
-  })`. It maps `encrypted` to the existing `blockedByEncryption` message and
+flatten: true })`, `send` = `invoke("print_pdf", { bytes: Array.from(bytes)
+})`. It maps `encrypted` to the existing `blockedByEncryption` message and
   `printed` to a success toast.
 - A **Print** button in the dock, following the existing icon/dock pattern
   (new icon added to `src/app/icons.ts`, wired in `src/app/dock.ts` and via
