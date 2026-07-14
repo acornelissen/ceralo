@@ -38,11 +38,19 @@ WYSIWYG. Guards match the save path:
   (`blockedByEncryption` / `EncryptedSaveError`), since pdf-lib cannot rewrite
   encrypted content.
 
-## Frontend (`src/main.ts`)
+## Frontend
 
-- New `printDocument(viewer)`, structurally a sibling of `exportFlattened`:
-  guard → `projectBytes(model, { flatten: true })` → `invoke("print_pdf", {
-  bytes: Array.from(bytes) })` → success or failure toast.
+- A pure `printDocument(model, encrypted, port)` seam in `src/print/print.ts`
+  decides the outcome (`no-document` / `encrypted` / `printed`), so the guard
+  logic is unit-testable without the DOM or Tauri. This matches the codebase's
+  pure-module pattern (`model/coords`, `save/save`); `main.ts` glue such as
+  `exportFlattened` is not unit-tested (there is no `main.test.ts` harness), so
+  extracting the seam is how we keep TDD honest here.
+- A `printFlattened(viewer)` wrapper in `src/main.ts`, structurally a sibling of
+  `exportFlattened`, supplies the port: `flatten` = `projectBytes(model, {
+  flatten: true })`, `send` = `invoke("print_pdf", { bytes: Array.from(bytes)
+  })`. It maps `encrypted` to the existing `blockedByEncryption` message and
+  `printed` to a success toast.
 - A **Print** button in the dock, following the existing icon/dock pattern
   (new icon added to `src/app/icons.ts`, wired in `src/app/dock.ts` and via
   `on("#print", ...)` in `main.ts`).
@@ -59,8 +67,10 @@ WYSIWYG. Guards match the save path:
     where the platform supports it.
   - Open the file with the OS default handler so the user reaches their print
     dialog.
-  - Register the command in `src-tauri/src/lib.rs`. Add whatever capability the
-    chosen opener mechanism requires to `src-tauri/capabilities/default.json`.
+  - Open with the OS default handler via the `opener` crate. Register the
+    command in `src-tauri/src/lib.rs`. No capability change is needed: custom
+    Tauri commands are callable from JS by default (the existing commands have
+    no capability entries), and `opener` is a plain crate.
 - **Temp file lifecycle — per-user temp dir, best-effort cleanup:** the file
   cannot be deleted immediately because the external viewer holds it open. On
   startup, purge our own leftover temp-print files (matched by the known
@@ -69,11 +79,12 @@ WYSIWYG. Guards match the save path:
 
 ## Testing
 
-- **Vitest** (`src/main.ts` behavior, mirroring the save/export tests):
-  - no open document → `invoke` is not called;
-  - encrypted source → blocked, encryption toast shown, no `invoke`;
-  - happy path → `invoke("print_pdf", ...)` called with the flattened bytes and
-    a success toast shown.
+- **Vitest** (`src/print/print.ts`, the pure seam):
+  - no document → returns `no-document`, neither `flatten` nor `send` called;
+  - encrypted → returns `encrypted`, neither called;
+  - happy path → `flatten` then `send` called, returns `printed`.
+  - Plus: `print` added to the shortcut matcher (`shortcuts.test.ts`) and the
+    icon set (`icons.test.ts`).
 - **Rust** (`src-tauri/src/pdf_io.rs`):
   - temp filename generation uses the expected prefix and is unique;
   - the cleanup-purge predicate selects only our old temp-print files and
