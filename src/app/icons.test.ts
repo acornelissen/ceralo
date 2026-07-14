@@ -22,6 +22,7 @@ describe("icon", () => {
       "save",
       "save-as",
       "export",
+      "print",
       "text",
       "sign",
       "undo",

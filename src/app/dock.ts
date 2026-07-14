@@ -28,6 +28,7 @@ const GROUPS: DockGroup[] = [
       { id: "save", name: "save", label: "Save", shortcut: "S" },
       { id: "save-as", name: "save-as", label: "Save as", shortcut: "S", shift: true },
       { id: "export-flat", name: "export", label: "Export flattened copy" },
+      { id: "print", name: "print", label: "Print", shortcut: "P" },
     ],
   },
   {

@@ -6,6 +6,7 @@ export type ShortcutAction =
   | "open"
   | "save"
   | "save-as"
+  | "print"
   | "undo"
   | "redo"
   | "zoom-in"
@@ -35,6 +36,8 @@ export function matchShortcut(chord: KeyChord, platform: Platform): ShortcutActi
       return "open";
     case "s":
       return chord.shiftKey ? "save-as" : "save";
+    case "p":
+      return "print";
     case "z":
       return chord.shiftKey ? "redo" : "undo";
     case "y":

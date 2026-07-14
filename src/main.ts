@@ -141,6 +141,7 @@ import "./pdf/textlayer.css";
 import "./pdf/textlayer.overrides.css"; // must load after textlayer.css to win
 import { isEncryptedPdf, saveModel, type SaveOptions } from "./save/save";
 import type { TextFontFamilies } from "./save/font";
+import { printDocument } from "./print/print";
 import { clampScale, fitToWidthScale, stepZoom, zoomByDelta } from "./pdf/zoom";
 
 // The text fonts (sans/serif/mono, each with weight/style variants) are bundled
@@ -1972,6 +1973,25 @@ async function exportFlattened(viewer: Viewer): Promise<void> {
 }
 
 /**
+ * Print the current document: flatten it (the Save projection) and hand the
+ * bytes to the OS default PDF handler, where the user reaches their print
+ * dialog. The working document is left untouched.
+ */
+async function printFlattened(viewer: Viewer): Promise<void> {
+  const outcome = await printDocument(viewer.model, viewer.encrypted, {
+    flatten: (model) => projectBytes(model, { flatten: true }),
+    send: (bytes) => invoke("print_pdf", { bytes: Array.from(bytes) }),
+  });
+  if (outcome === "encrypted") {
+    blockedByEncryption(viewer);
+    return;
+  }
+  if (outcome === "printed") {
+    notify(viewer, "Sent to your PDF viewer for printing.", "success");
+  }
+}
+
+/**
  * Open already-read PDF bytes: refuse XFA, prompt for a password if needed, then
  * make it the current document. Shared by the Open dialog and drag-and-drop, so
  * both entry points behave identically.
@@ -2158,6 +2178,7 @@ window.addEventListener("DOMContentLoaded", () => {
   on("#save", () => save(viewer), "save the PDF");
   on("#save-as", () => saveAs(viewer), "save the PDF");
   on("#export-flat", () => exportFlattened(viewer), "export a flattened PDF");
+  on("#print", () => printFlattened(viewer), "print the PDF");
   on("#zoom-in", () => setScale(viewer, stepZoom(viewer.scale, "in")), "zoom");
   on("#zoom-out", () => setScale(viewer, stepZoom(viewer.scale, "out")), "zoom");
   on("#zoom-fit", () => fitWidth(viewer), "fit to width");
@@ -2326,6 +2347,9 @@ window.addEventListener("DOMContentLoaded", () => {
         return;
       case "save-as":
         run(() => saveAs(viewer), "save the PDF");
+        return;
+      case "print":
+        run(() => printFlattened(viewer), "print the PDF");
         return;
       case "undo":
         run(() => stepHistory(viewer, "undo"), "undo");
