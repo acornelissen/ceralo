@@ -34,7 +34,7 @@ describe("listFormFields", () => {
     const found = await fields("acroform.pdf");
     const radios = found.filter((field) => field.name === "radio.color");
     expect(radios).toHaveLength(2);
-    expect(radios.map((r) => r.onValue).sort()).toEqual(["0", "1"]);
+    expect(radios.map((r) => r.onValue).sort()).toEqual(["blue", "red"]);
   });
 
   it("captures a checkbox on-value", async () => {
@@ -58,7 +58,7 @@ describe("listFormFields", () => {
     let model = createModel(fixture("acroform.pdf"));
     model = setFieldValue(model, "text.fullName", "Boemsie");
     model = setFieldValue(model, "check.agree", true);
-    model = setFieldValue(model, "radio.color", "1");
+    model = setFieldValue(model, "radio.color", "blue");
     model = setFieldValue(model, "choice.city", "Tokyo");
     const reopened = await listFormFields(await loadPdfDocument(await saveModel(model)));
     const byName = new Map(reopened.map((field) => [field.name, field]));
@@ -67,7 +67,11 @@ describe("listFormFields", () => {
     expect(byName.get("check.agree")?.value).toBe(true);
     expect(byName.get("choice.city")?.value).toBe("Tokyo");
     // The selected radio widget carries the group's value.
-    expect(reopened.find((f) => f.name === "radio.color" && f.onValue === "1")?.value).toBe("1");
-    expect(reopened.find((f) => f.name === "radio.color" && f.onValue === "0")?.value).toBe("1");
+    expect(reopened.find((f) => f.name === "radio.color" && f.onValue === "blue")?.value).toBe(
+      "blue",
+    );
+    expect(reopened.find((f) => f.name === "radio.color" && f.onValue === "red")?.value).toBe(
+      "blue",
+    );
   });
 });

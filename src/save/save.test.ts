@@ -266,7 +266,9 @@ async function pageCount(bytes: Uint8Array): Promise<number> {
 
 async function fieldNames(bytes: Uint8Array): Promise<string[]> {
   const doc = await loadPdfDocument(bytes);
-  const fields = await doc.getFieldObjects();
+  // pdf.js 6.2+ returns a Map here; Object.keys on it is silently empty.
+  const fields: unknown = await doc.getFieldObjects();
+  if (fields instanceof Map) return [...fields.keys()].map(String).sort();
   return Object.keys(fields ?? {}).sort();
 }
 
@@ -286,7 +288,7 @@ describe("saveModel empty round-trip", () => {
     let model = createModel(fixture("acroform.pdf"));
     model = setFieldValue(model, "text.fullName", "Ada Lovelace");
     model = setFieldValue(model, "check.agree", true);
-    model = setFieldValue(model, "radio.color", "1");
+    model = setFieldValue(model, "radio.color", "blue");
     model = setFieldValue(model, "choice.city", "Paris");
     model = setFieldValue(model, "choice.fruit", "Pear");
 
@@ -294,9 +296,25 @@ describe("saveModel empty round-trip", () => {
 
     expect(values["text.fullName"]).toBe("Ada Lovelace");
     expect(values["check.agree"]).toBe("Yes");
-    expect(values["radio.color"]).toBe("1");
+    expect(values["radio.color"]).toBe("blue");
     expect(values["choice.city"]).toBe("Paris");
     expect(values["choice.fruit"]).toBe("Pear");
+  });
+
+  it("still selects a radio option from a positional index", async () => {
+    // pdf.js before 6.2 reported radio on-values as indices, so a value like
+    // "1" can still arrive from older state.
+    let model = createModel(fixture("acroform.pdf"));
+    model = setFieldValue(model, "radio.color", "1");
+
+    const values = await fieldValues(await saveModel(model));
+
+    expect(values["radio.color"]).toBe("blue");
+  });
+
+  it("finds real field names in a form PDF", async () => {
+    // Guards the field-set comparison above against passing on two empty lists.
+    expect(await fieldNames(fixture("acroform.pdf"))).toContain("radio.color");
   });
 
   it("draws a text box whose content and baseline position survive re-open", async () => {
