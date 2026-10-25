@@ -8,6 +8,11 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
+    # One PR for every minor/patch bump; majors still come one per PR so
+    # each breaking change gets its own review.
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
     ignore:
       # @types/node tracks the pinned Node runtime (see mise.toml); bump it
       # together with the runtime, not ahead of it.
@@ -26,6 +31,9 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      cargo-minor-patch:
+        update-types: ["minor", "patch"]
 
   # GitHub Actions used by CI and the release workflow.
   - package-ecosystem: "github-actions"
@@ -34,3 +42,6 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]
